@@ -58,17 +58,40 @@ async def test_archive_today():
         # Test 4: Check for CAPTCHA
         print("\n--- Test 4: Check for CAPTCHA elements ---")
         try:
-            hcaptcha = await page.query_selector("iframe[src*='hcaptcha']")
+            # Check for reCAPTCHA
+            recaptcha = await page.query_selector(".g-recaptcha")
+            if recaptcha:
+                print("Found reCAPTCHA element (.g-recaptcha)")
+                sitekey = await recaptcha.get_attribute("data-sitekey")
+                if sitekey:
+                    print(f"  reCAPTCHA sitekey: {sitekey}")
+            
+            # Check for reCAPTCHA iframe
+            recaptcha_iframe = await page.query_selector("iframe[src*='recaptcha']")
+            if recaptcha_iframe:
+                print("Found reCAPTCHA iframe")
+            
+            # Check for hCaptcha
+            hcaptcha = await page.query_selector(".h-captcha, [data-hcaptcha-sitekey]")
             if hcaptcha:
+                print("Found hCaptcha element")
+                sitekey = await hcaptcha.get_attribute("data-sitekey") or await hcaptcha.get_attribute("data-hcaptcha-sitekey")
+                if sitekey:
+                    print(f"  hCaptcha sitekey: {sitekey}")
+            
+            # Check for hCaptcha iframe
+            hcaptcha_iframe = await page.query_selector("iframe[src*='hcaptcha']")
+            if hcaptcha_iframe:
                 print("Found hCaptcha iframe")
             
-            sitekey = await page.query_selector("[data-sitekey]")
-            if sitekey:
-                key = await sitekey.get_attribute("data-sitekey")
-                print(f"Found sitekey: {key}")
+            # Generic sitekey check
+            sitekey_element = await page.query_selector("[data-sitekey]")
+            if sitekey_element:
+                key = await sitekey_element.get_attribute("data-sitekey")
+                print(f"Found generic data-sitekey: {key}")
             
-            if not hcaptcha and not sitekey:
-                print("No CAPTCHA elements found on initial page")
+            if not recaptcha and not recaptcha_iframe and not hcaptcha and not hcaptcha_iframe and not sitekey_element:
+                print("No CAPTCHA elements found on page")
         except Exception as e:
             print(f"FAILED: {e}")
         
@@ -86,14 +109,18 @@ async def test_archive_today():
             print(f"After submit URL: {page.url}")
             
             # Check for CAPTCHA now
-            hcaptcha = await page.query_selector("iframe[src*='hcaptcha']")
+            recaptcha = await page.query_selector(".g-recaptcha, iframe[src*='recaptcha']")
+            hcaptcha = await page.query_selector(".h-captcha, iframe[src*='hcaptcha']")
             sitekey = await page.query_selector("[data-sitekey]")
-            if hcaptcha or sitekey:
-                print("CAPTCHA appeared after submit")
-                if sitekey:
-                    key = await sitekey.get_attribute("data-sitekey")
-                    print(f"Sitekey: {key}")
-            else:
+            
+            if recaptcha:
+                print("reCAPTCHA appeared after submit")
+            if hcaptcha:
+                print("hCaptcha appeared after submit")
+            if sitekey:
+                key = await sitekey.get_attribute("data-sitekey")
+                print(f"Sitekey: {key}")
+            if not recaptcha and not hcaptcha and not sitekey:
                 print("No CAPTCHA after submit")
                 
         except Exception as e:

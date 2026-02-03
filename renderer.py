@@ -119,34 +119,78 @@ class ArchiveRenderer:
         Returns True if no CAPTCHA or successfully solved.
         """
         try:
+            # Save debug screenshot
+            await page.screenshot(path="/data/captcha_check.png")
+            print(f"Debug screenshot saved to /data/captcha_check.png")
+            print(f"Current URL: {page.url}")
+            
+            # Get page title to check for CAPTCHA page
+            title = await page.title()
+            print(f"Page title: {title}")
+            
+            # Check page content for CAPTCHA indicators
+            content = await page.content()
+            has_recaptcha_script = "recaptcha" in content.lower()
+            has_hcaptcha_script = "hcaptcha" in content.lower()
+            has_one_more_step = "one more step" in content.lower()
+            print(f"Page contains: recaptcha={has_recaptcha_script}, hcaptcha={has_hcaptcha_script}, 'one more step'={has_one_more_step}")
+            
             # Check for reCAPTCHA
-            recaptcha_element = await page.query_selector(".g-recaptcha, [data-sitekey]")
+            recaptcha_element = await page.query_selector(".g-recaptcha")
+            sitekey_element = await page.query_selector("[data-sitekey]")
+            
+            site_key = None
             if recaptcha_element:
                 site_key = await recaptcha_element.get_attribute("data-sitekey")
-                if site_key:
-                    print(f"Found reCAPTCHA with sitekey: {site_key}")
-                    
-                    solution = await self._solve_captcha(page, site_key, 'recaptcha')
-                    if solution:
-                        # Inject the solution
-                        await page.evaluate(f"""
-                            document.querySelector('#g-recaptcha-response').value = '{solution}';
-                            // Also try textarea version
-                            var ta = document.querySelector('textarea[name="g-recaptcha-response"]');
-                            if (ta) ta.value = '{solution}';
-                        """)
-                        
-                        # Find and click submit button
-                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"]')
-                        if submit_btn:
-                            await submit_btn.click()
-                            await page.wait_for_load_state("networkidle", timeout=60000)
-                        return True
-                    else:
-                        print("Failed to solve reCAPTCHA")
-                        return False
+                print(f"Found .g-recaptcha element with sitekey: {site_key}")
+            elif sitekey_element:
+                site_key = await sitekey_element.get_attribute("data-sitekey")
+                print(f"Found [data-sitekey] element with sitekey: {site_key}")
             
-            # Check for hCaptcha iframe
+            if site_key:
+                print(f"Solving reCAPTCHA with sitekey: {site_key}")
+                
+                solution = await self._solve_captcha(page, site_key, 'recaptcha')
+                if solution:
+                    print(f"Got solution, injecting...")
+                    # Inject the solution
+                    await page.evaluate(f"""
+                        var response = '{solution}';
+                        // Try various ways to set the response
+                        var el1 = document.querySelector('#g-recaptcha-response');
+                        if (el1) el1.value = response;
+                        
+                        var el2 = document.querySelector('textarea[name="g-recaptcha-response"]');
+                        if (el2) el2.value = response;
+                        
+                        var el3 = document.querySelector('[name="g-recaptcha-response"]');
+                        if (el3) el3.value = response;
+                        
+                        // Try to trigger callback if exists
+                        if (typeof ___grecaptcha_cfg !== 'undefined') {{
+                            var clients = ___grecaptcha_cfg.clients;
+                            for (var key in clients) {{
+                                if (clients[key].callback) {{
+                                    clients[key].callback(response);
+                                }}
+                            }}
+                        }}
+                    """)
+                    
+                    # Find and click submit button
+                    submit_btn = await page.query_selector('input[type="submit"], button[type="submit"], button')
+                    if submit_btn:
+                        print("Clicking submit button...")
+                        await submit_btn.click()
+                        await page.wait_for_load_state("domcontentloaded", timeout=60000)
+                        await page.screenshot(path="/data/after_captcha_submit.png")
+                        print("Screenshot after submit saved to /data/after_captcha_submit.png")
+                    return True
+                else:
+                    print("Failed to solve reCAPTCHA - no solution returned")
+                    return False
+            
+            # Check for hCaptcha
             hcaptcha_element = await page.query_selector("[data-hcaptcha-sitekey], .h-captcha")
             if hcaptcha_element:
                 site_key = await hcaptcha_element.get_attribute("data-sitekey") or await hcaptcha_element.get_attribute("data-hcaptcha-sitekey")
@@ -162,20 +206,30 @@ class ArchiveRenderer:
                         """)
                         
                         # Submit the form
-                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"]')
+                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"], button')
                         if submit_btn:
                             await submit_btn.click()
-                            await page.wait_for_load_state("networkidle", timeout=60000)
+                            await page.wait_for_load_state("domcontentloaded", timeout=60000)
                         return True
                     else:
                         print("Failed to solve hCaptcha")
                         return False
+            
+            # Check if we're on a CAPTCHA page but couldn't find elements
+            if has_one_more_step or has_recaptcha_script:
+                print("WARNING: Appears to be CAPTCHA page but couldn't find sitekey element")
+                # Print all elements with data-sitekey for debugging
+                all_sitekeys = await page.query_selector_all("[data-sitekey]")
+                print(f"Found {len(all_sitekeys)} elements with data-sitekey attribute")
+                return False
             
             print("No CAPTCHA found on page")
             return True
             
         except Exception as e:
             print(f"CAPTCHA check error: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     async def render_archive(self, url: str, timeout: int = 120000) -> RenderResult:
@@ -205,15 +259,22 @@ class ArchiveRenderer:
             
             try:
                 # Navigate to archive.today (60s timeout - site can be slow)
+                print(f"Navigating to {self.ARCHIVE_URL}...")
                 await page.goto(self.ARCHIVE_URL, wait_until="domcontentloaded", timeout=60000)
+                print(f"Page loaded. URL: {page.url}")
+                
+                # Save initial screenshot
+                await page.screenshot(path="/data/render_initial.png")
+                print("Initial screenshot saved to /data/render_initial.png")
                 
                 # Check for CAPTCHA on initial page load
                 print("Checking for initial CAPTCHA...")
                 captcha_solved = await self._check_and_solve_captcha(page)
                 if not captcha_solved:
+                    await page.screenshot(path="/data/render_captcha_failed.png")
                     return RenderResult(
                         success=False,
-                        error="Failed to solve initial CAPTCHA"
+                        error="Failed to solve initial CAPTCHA. Check /data/render_captcha_failed.png"
                     )
                 
                 # Now look for the URL input form
