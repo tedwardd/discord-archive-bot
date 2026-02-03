@@ -128,13 +128,17 @@ All commands support both prefix (`!`) and slash (`/`) command formats.
 
 ```
 archive_bot/
-├── bot.py              # Main bot file
-├── database.py         # SQLite database operations
-├── archive_service.py  # archive.is API integration
-├── requirements.txt    # Python dependencies
-├── .env.example        # Example environment file
-├── .env                # Your environment file (create this)
-└── archive_bot.db      # SQLite database (auto-created)
+├── bot.py                      # Main bot file
+├── database.py                 # SQLite database operations
+├── archive_service.py          # Wayback Machine and archive.today integration
+├── requirements.txt            # Python dependencies
+├── Dockerfile                  # Docker container definition
+├── docker-compose.yml          # Docker Compose config (set token here)
+├── docker-compose.example.yml  # Example Docker Compose config
+├── rebuild.sh                  # Script to rebuild Docker container
+├── .env.example                # Example environment file (for non-Docker use)
+└── data/                       # Persistent data directory
+    └── archive_bot.db          # SQLite database (auto-created)
 ```
 
 ## Common Sites to Watch
@@ -159,11 +163,12 @@ Here are some common sites you might want to add:
 - Check that the bot has permission to read and send messages in the channel
 
 ### Archive checks are slow
-- archive.is can be slow to respond; this is normal
+- The Wayback Machine can be slow to respond; this is normal
 - The bot shows a typing indicator while checking
 
 ### "DISCORD_TOKEN not set" error
-- Make sure you've created the `.env` file with your token
+- **Docker**: Make sure you've set the token in `docker-compose.yml`
+- **Python**: Make sure you've created the `.env` file with your token
 - Check the token is correct and the bot is not disabled
 
 ## License
