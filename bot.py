@@ -171,18 +171,17 @@ class ArchiveCog(commands.Cog, name="Archive"):
             await message.reply(embed=embed, mention_author=False)
             
         elif result.submitted:
+            archive_url = result.archive_url or f"https://archive.is/newest/{url}"
             embed = discord.Embed(
                 title="Archive Not Found - Archiving Initiated",
                 description=(
                     "This page has not yet been archived. "
                     "I've submitted it to archive.is for archiving.\n\n"
-                    "**Note:** Archiving can take several minutes to complete. "
-                    "Check back later at the link below."
+                    "**Note:** Archiving can take several minutes to complete."
                 ),
                 color=discord.Color.orange()
             )
-            check_url = f"https://archive.is/newest/{url}"
-            embed.add_field(name="Check Archive Status", value=check_url, inline=False)
+            embed.add_field(name="Archive URL", value=archive_url, inline=False)
             embed.add_field(name="Original URL", value=url, inline=False)
             await message.reply(embed=embed, mention_author=False)
             
@@ -214,6 +213,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
             await ctx.send(embed=embed)
             
         elif result.submitted:
+            archive_url = result.archive_url or f"https://archive.is/newest/{url}"
             embed = discord.Embed(
                 title="Archive Initiated",
                 description=(
@@ -223,8 +223,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
                 ),
                 color=discord.Color.orange()
             )
-            check_url = f"https://archive.is/newest/{url}"
-            embed.add_field(name="Check Status", value=check_url, inline=False)
+            embed.add_field(name="Archive URL", value=archive_url, inline=False)
             await ctx.send(embed=embed)
             
         else:
