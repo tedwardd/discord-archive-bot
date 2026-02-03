@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 from urllib.parse import quote
 from dataclasses import dataclass
@@ -15,8 +16,18 @@ class ArchiveResult:
 class ArchiveService:
     """Service for interacting with archive.is (archive.today)."""
     
-    BASE_URL = "https://archive.is"
-    TIMEMAP_URL = "https://archive.is/timemap"
+    BASE_URL = "https://archive.today"
+    TIMEMAP_URL = "https://archive.today/timemap"
+    
+    # Browser-like headers to avoid rate limiting
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
     
     def __init__(self):
         self.session: aiohttp.ClientSession | None = None
@@ -24,11 +35,7 @@ class ArchiveService:
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create the aiohttp session."""
         if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession(
-                headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; ArchiveBot/1.0)"
-                }
-            )
+            self.session = aiohttp.ClientSession(headers=self.HEADERS)
         return self.session
     
     async def close(self):
@@ -77,16 +84,20 @@ class ArchiveService:
     
     async def check_archive_simple(self, url: str) -> ArchiveResult:
         """
-        Simple check using the direct archive.is/url format.
+        Simple check using the direct archive.today/url format.
         This is more reliable for checking existing archives.
         """
         session = await self._get_session()
         
-        # archive.is/newest/URL redirects to the newest archive if it exists
+        # archive.today/newest/URL redirects to the newest archive if it exists
         check_url = f"{self.BASE_URL}/newest/{url}"
         
         try:
             async with session.get(check_url, allow_redirects=False) as response:
+                if response.status == 429:
+                    # Rate limited, but we can still provide the check URL
+                    return ArchiveResult(found=False)
+                
                 if response.status in (301, 302, 303, 307, 308):
                     # Redirect means an archive exists
                     location = response.headers.get('Location', '')
@@ -97,7 +108,7 @@ class ArchiveService:
                 if response.status == 200:
                     # Check the final URL after potential redirects
                     final_url = str(response.url)
-                    if '/newest/' not in final_url and self.BASE_URL in final_url:
+                    if '/newest/' not in final_url and 'archive.' in final_url:
                         return ArchiveResult(found=True, archive_url=final_url)
                 
                 return ArchiveResult(found=False)
@@ -105,7 +116,7 @@ class ArchiveService:
         except aiohttp.ClientError as e:
             return ArchiveResult(found=False, error=str(e))
     
-    async def submit_archive(self, url: str) -> ArchiveResult:
+    async def submit_archive(self, url: str, retries: int = 2) -> ArchiveResult:
         """
         Submit a URL to be archived on archive.is.
         Note: This initiates the archiving process but doesn't wait for completion.
@@ -114,40 +125,68 @@ class ArchiveService:
         
         submit_url = f"{self.BASE_URL}/submit/"
         
-        try:
-            # First, get the submit page to obtain any necessary tokens
-            async with session.get(self.BASE_URL) as response:
-                if response.status != 200:
-                    return ArchiveResult(
-                        found=False, 
-                        error="Could not access archive.is",
-                        submitted=False
-                    )
-            
-            # Submit the URL for archiving
-            data = {"url": url}
-            async with session.post(
-                submit_url, 
-                data=data,
-                allow_redirects=False
-            ) as response:
-                # archive.is typically redirects to the new archive page
-                if response.status in (200, 301, 302, 303, 307, 308):
-                    location = response.headers.get('Location', '')
+        for attempt in range(retries + 1):
+            try:
+                # First, get the submit page to obtain any necessary tokens
+                async with session.get(self.BASE_URL) as response:
+                    if response.status == 429:
+                        if attempt < retries:
+                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                            continue
+                        return ArchiveResult(
+                            found=False,
+                            archive_url=f"{self.BASE_URL}/?run=1&url={quote(url, safe='')}",
+                            error="Rate limited by archive.today. Use the link to archive manually.",
+                            submitted=False
+                        )
+                    if response.status != 200:
+                        return ArchiveResult(
+                            found=False, 
+                            error="Could not access archive.today",
+                            submitted=False
+                        )
+                
+                # Submit the URL for archiving
+                data = {"url": url}
+                async with session.post(
+                    submit_url, 
+                    data=data,
+                    allow_redirects=False
+                ) as response:
+                    # Handle rate limiting
+                    if response.status == 429:
+                        if attempt < retries:
+                            await asyncio.sleep(2 ** attempt)
+                            continue
+                        return ArchiveResult(
+                            found=False,
+                            archive_url=f"{self.BASE_URL}/?run=1&url={quote(url, safe='')}",
+                            error="Rate limited by archive.today. Use the link to archive manually.",
+                            submitted=False
+                        )
+                    
+                    # archive.is typically redirects to the new archive page
+                    if response.status in (200, 301, 302, 303, 307, 308):
+                        location = response.headers.get('Location', '')
+                        return ArchiveResult(
+                            found=False,
+                            archive_url=location if location else None,
+                            submitted=True
+                        )
+                    
                     return ArchiveResult(
                         found=False,
-                        archive_url=location if location else None,
-                        submitted=True
+                        error=f"Unexpected response: {response.status}",
+                        submitted=False
                     )
-                
-                return ArchiveResult(
-                    found=False,
-                    error=f"Unexpected response: {response.status}",
-                    submitted=False
-                )
-                
-        except aiohttp.ClientError as e:
-            return ArchiveResult(found=False, error=str(e), submitted=False)
+                    
+            except aiohttp.ClientError as e:
+                if attempt < retries:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                return ArchiveResult(found=False, error=str(e), submitted=False)
+        
+        return ArchiveResult(found=False, error="Max retries exceeded", submitted=False)
     
     async def check_and_archive(self, url: str) -> ArchiveResult:
         """

@@ -188,9 +188,11 @@ class ArchiveCog(commands.Cog, name="Archive"):
         elif result.error:
             embed = discord.Embed(
                 title="Archive Check Failed",
-                description=f"Could not check archive status: {result.error}",
+                description=result.error,
                 color=discord.Color.red()
             )
+            if result.archive_url:
+                embed.add_field(name="Manual Archive Link", value=result.archive_url, inline=False)
             await message.reply(embed=embed, mention_author=False)
     
     @commands.hybrid_command(name="archive", description="Manually check/archive a URL")
@@ -232,6 +234,8 @@ class ArchiveCog(commands.Cog, name="Archive"):
                 description=result.error or "Could not archive the URL.",
                 color=discord.Color.red()
             )
+            if result.archive_url:
+                embed.add_field(name="Manual Archive Link", value=result.archive_url, inline=False)
             await ctx.send(embed=embed)
 
 
