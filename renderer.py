@@ -337,20 +337,29 @@ class ArchiveRenderer:
                     )
                 
                 # Fill in the URL
+                print(f"Filling URL: {url}")
                 await page.fill('input[name="url"]', url)
                 
                 # Click submit
+                print("Clicking submit button...")
                 await page.click('input[type="submit"]')
                 
                 # Wait for navigation (60s timeout)
+                print("Waiting for page load after submit...")
                 await page.wait_for_load_state("domcontentloaded", timeout=60000)
                 
+                # Save screenshot after form submission
+                await page.screenshot(path="/data/render_after_submit.png")
+                print(f"After submit screenshot saved. Current URL: {page.url}")
+                
                 # Check for another CAPTCHA after submit
+                print("Checking for CAPTCHA after submit...")
                 captcha_solved = await self._check_and_solve_captcha(page)
                 if not captcha_solved:
+                    await page.screenshot(path="/data/render_post_captcha_failed.png")
                     return RenderResult(
                         success=False,
-                        error="Failed to solve CAPTCHA after submit"
+                        error="Failed to solve CAPTCHA after submit. Check /data/render_post_captcha_failed.png"
                     )
                 
                 # Wait for the archive to complete or find existing
@@ -365,7 +374,7 @@ class ArchiveRenderer:
                         await asyncio.sleep(2)
                         await page.reload()
                         continue
-                    elif "archive.today/" in current_url or "archive.is/" in current_url:
+                    elif "archive.today/" in current_url or "archive.is/" in current_url or "archive.ph/" in current_url:
                         # Check if it's a valid archive URL (has a hash)
                         path = current_url.split("archive.today/")[-1].split("archive.is/")[-1]
                         if path and not path.startswith("?") and len(path) > 5:
