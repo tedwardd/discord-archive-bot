@@ -1,14 +1,14 @@
 # Archive Bot
 
-A Discord bot that monitors messages for URLs from configured sites and automatically provides archived versions.
+A Discord bot that monitors messages for URLs from configured sites and automatically creates archived versions using archive.today.
 
 ## Features
 
 - **Automatic URL Detection**: Monitors messages for links to configured sites
-- **Wayback Machine Integration**: Checks for and creates Wayback Machine archives
-- **archive.today Links**: Provides archive.today links as an alternative
+- **Automatic Archiving**: Creates archive.today archives with browser rendering
+- **CAPTCHA Solving**: Uses SolveCaptcha service to handle archive.today CAPTCHAs
 - **Site Management**: Add/remove watched sites via Discord commands
-- **SQLite Database**: Persistent storage for watched sites list
+- **SQLite Database**: Persistent storage for watched sites list (per-server)
 
 ## Setup
 
@@ -103,7 +103,8 @@ All commands support both prefix (`!`) and slash (`/`) command formats.
 
 | Command | Description |
 |---------|-------------|
-| `!archive <url>` | Manually check/archive any URL |
+| `!archive <url>` | Get archive.today links for any URL |
+| `!render <url>` | Create an archived version of a URL |
 
 ## Usage Examples
 
@@ -119,10 +120,10 @@ All commands support both prefix (`!`) and slash (`/`) command formats.
 
 1. A user posts a message containing a URL like `https://www.nytimes.com/2024/article-title`
 2. The bot detects the URL matches a configured watched site
-3. The bot checks the Wayback Machine for an existing archive
-4. If found, it replies with the archived link
-5. If not found, it submits the page to the Wayback Machine for archiving
-6. It also provides archive.today links as an alternative
+3. The bot uses browser rendering to create an archive on archive.today
+4. CAPTCHAs are automatically solved using the SolveCaptcha service
+5. If successful, it replies with the archived link
+6. If archiving fails, it provides manual archive.today links
 
 ## File Structure
 

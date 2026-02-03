@@ -133,12 +133,12 @@ class SiteManagementCog(commands.Cog, name="Site Management"):
         
         embed.add_field(
             name=f"{prefix}archive <url>",
-            value="Get archived version of any URL",
+            value="Get archive.today links for any URL",
             inline=False
         )
         embed.add_field(
             name=f"{prefix}render <url>",
-            value="Archive via browser rendering with CAPTCHA solving",
+            value="Create an archived version of a URL",
             inline=False
         )
         embed.add_field(
@@ -212,84 +212,64 @@ class ArchiveCog(commands.Cog, name="Archive"):
                 print(f"Error processing URL {url}: {e}")
     
     async def _handle_watched_url(self, message: discord.Message, url: str):
-        """Handle a URL from a watched site."""
-        async with message.channel.typing():
-            result = await self.bot.archive_service.get_archive(url)
-        
+        """Handle a URL from a watched site by rendering an archive."""
+        # Send initial status message
         embed = discord.Embed(
-            title="Archived Version",
-            color=discord.Color.blue()
+            title="Archiving Page",
+            description="Creating an archived version of this page. This may take a moment...",
+            color=discord.Color.orange()
         )
+        status_msg = await message.reply(embed=embed, mention_author=False)
         
-        # Wayback Machine result
-        if result.wayback_url:
-            embed.description = "Found an archived version on the Wayback Machine."
-            embed.add_field(name="Wayback Machine", value=result.wayback_url, inline=False)
-        elif result.wayback_saved:
-            embed.description = "Submitted to Wayback Machine for archiving."
+        # Render the archive
+        result = await self.bot.archive_renderer.render_archive(url)
+        
+        if result.success and result.archive_url:
+            embed = discord.Embed(
+                title="Archived Version",
+                description="Successfully created an archived version.",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Archive URL", value=result.archive_url, inline=False)
+        else:
+            # Provide manual links on failure
+            links = self.bot.archive_service.get_links(url)
+            embed = discord.Embed(
+                title="Archive Failed",
+                description="Could not automatically archive this page.",
+                color=discord.Color.red()
+            )
             embed.add_field(
-                name="Wayback Machine", 
-                value=f"Archiving in progress. Check back shortly at:\nhttps://web.archive.org/web/{url}", 
+                name="Archive Manually",
+                value=f"[Search existing archives]({links.search_url}) or [create new archive]({links.save_url})",
                 inline=False
             )
-        elif result.wayback_error:
-            embed.description = f"Wayback Machine: {result.wayback_error}"
-        else:
-            embed.description = "No Wayback Machine archive found."
         
-        # archive.today fallback
-        embed.add_field(
-            name="Alternative Archive",
-            value=f"Try [archive.today]({result.archive_today_search}) or [create new archive]({result.archive_today_save})",
-            inline=False
-        )
-        
-        await message.reply(embed=embed, mention_author=False)
+        await status_msg.edit(embed=embed)
     
-    @commands.hybrid_command(name="archive", description="Get archived version of a URL")
-    @app_commands.describe(url="The URL to archive")
+    @commands.hybrid_command(name="archive", description="Get archive.today links for a URL")
+    @app_commands.describe(url="The URL to get archive links for")
     async def manual_archive(self, ctx: commands.Context, url: str):
-        """Get archived version of a URL using Wayback Machine and archive.today."""
+        """Get archive.today links for a URL."""
         if not url.startswith("http"):
             url = "https://" + url
         
-        await ctx.defer()
-        result = await self.bot.archive_service.get_archive(url)
+        links = self.bot.archive_service.get_links(url)
         
         embed = discord.Embed(
-            title="Archive Results",
+            title="Archive Links",
+            description="Use these links to find or create an archived version.",
             color=discord.Color.blue()
         )
-        
-        # Wayback Machine result
-        if result.wayback_url:
-            embed.description = "Found an archived version on the Wayback Machine."
-            embed.add_field(name="Wayback Machine", value=result.wayback_url, inline=False)
-        elif result.wayback_saved:
-            embed.description = "Submitted to Wayback Machine for archiving."
-            embed.add_field(
-                name="Wayback Machine", 
-                value=f"Archiving in progress. Check back shortly at:\nhttps://web.archive.org/web/{url}", 
-                inline=False
-            )
-        elif result.wayback_error:
-            embed.description = f"Wayback Machine: {result.wayback_error}"
-        else:
-            embed.description = "No Wayback Machine archive found."
-        
-        # archive.today fallback
-        embed.add_field(
-            name="Alternative Archive",
-            value=f"Try [archive.today]({result.archive_today_search}) or [create new archive]({result.archive_today_save})",
-            inline=False
-        )
+        embed.add_field(name="Search Existing Archives", value=links.search_url, inline=False)
+        embed.add_field(name="Create New Archive", value=links.save_url, inline=False)
         
         await ctx.send(embed=embed)
     
-    @commands.hybrid_command(name="render", description="Archive a URL on archive.today using browser rendering")
-    @app_commands.describe(url="The URL to archive on archive.today")
+    @commands.hybrid_command(name="render", description="Create an archived version of a URL")
+    @app_commands.describe(url="The URL to archive")
     async def render_archive(self, ctx: commands.Context, url: str):
-        """Archive a URL on archive.today using browser rendering with CAPTCHA solving."""
+        """Create an archived version of a URL on archive.today."""
         logger.info(f"!render command received for URL: {url}")
         
         if not url.startswith("http"):
@@ -298,8 +278,8 @@ class ArchiveCog(commands.Cog, name="Archive"):
         await ctx.defer()
         
         embed = discord.Embed(
-            title="Archiving via archive.today",
-            description="Using browser rendering to archive this page. This may take a few minutes while the CAPTCHA is solved...",
+            title="Archiving Page",
+            description="Creating an archived version of this page. This may take a moment...",
             color=discord.Color.orange()
         )
         status_msg = await ctx.send(embed=embed)
@@ -310,22 +290,21 @@ class ArchiveCog(commands.Cog, name="Archive"):
         
         if result.success and result.archive_url:
             embed = discord.Embed(
-                title="archive.today - Archive Created",
-                description="Successfully archived the page on archive.today.",
+                title="Archive Created",
+                description="Successfully created an archived version.",
                 color=discord.Color.green()
             )
             embed.add_field(name="Archive URL", value=result.archive_url, inline=False)
         else:
+            links = self.bot.archive_service.get_links(url)
             embed = discord.Embed(
-                title="archive.today - Archive Failed",
-                description=result.error or "Unknown error occurred.",
+                title="Archive Failed",
+                description="Could not automatically archive this page.",
                 color=discord.Color.red()
             )
-            # Provide fallback links
-            links = self.bot.archive_service._get_archive_today_links(url)
             embed.add_field(
-                name="Try Manually on archive.today",
-                value=f"[Search existing archives]({links[0]}) or [create new archive]({links[1]})",
+                name="Archive Manually",
+                value=f"[Search existing archives]({links.search_url}) or [create new archive]({links.save_url})",
                 inline=False
             )
         
