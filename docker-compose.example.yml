@@ -9,3 +9,5 @@ services:
       - DATABASE_PATH=/data/archive_bot.db
       # Optional: SolveCaptcha API key for !render command (https://solvecaptcha.com)
       - SOLVECAPTCHA_API_KEY=
+      # Disable Python output buffering for real-time logs
+      - PYTHONUNBUFFERED=1
