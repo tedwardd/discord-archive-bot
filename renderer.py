@@ -118,7 +118,7 @@ class ArchiveRenderer:
                             
                             # Submit the form
                             await page.click('input[type="submit"]')
-                            await page.wait_for_load_state("networkidle", timeout=30000)
+                            await page.wait_for_load_state("networkidle", timeout=60000)
                             return True
                         else:
                             return False
@@ -155,8 +155,8 @@ class ArchiveRenderer:
             page = await context.new_page()
             
             try:
-                # Navigate to archive.today
-                await page.goto(self.ARCHIVE_URL, wait_until="networkidle", timeout=30000)
+                # Navigate to archive.today (60s timeout - site can be slow)
+                await page.goto(self.ARCHIVE_URL, wait_until="networkidle", timeout=60000)
                 
                 # Fill in the URL
                 await page.fill('input[name="url"]', url)
@@ -164,8 +164,8 @@ class ArchiveRenderer:
                 # Click submit
                 await page.click('input[type="submit"]')
                 
-                # Wait for navigation
-                await page.wait_for_load_state("networkidle", timeout=30000)
+                # Wait for navigation (60s timeout)
+                await page.wait_for_load_state("networkidle", timeout=60000)
                 
                 # Check for CAPTCHA and solve if needed
                 captcha_solved = await self._check_and_solve_captcha(page)
