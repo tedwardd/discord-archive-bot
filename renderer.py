@@ -1,4 +1,5 @@
 import os
+import re
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from playwright.async_api import async_playwright, Browser, Page
@@ -135,17 +136,38 @@ class ArchiveRenderer:
             has_one_more_step = "one more step" in content.lower()
             print(f"Page contains: recaptcha={has_recaptcha_script}, hcaptcha={has_hcaptcha_script}, 'one more step'={has_one_more_step}")
             
-            # Check for reCAPTCHA
-            recaptcha_element = await page.query_selector(".g-recaptcha")
-            sitekey_element = await page.query_selector("[data-sitekey]")
-            
             site_key = None
-            if recaptcha_element:
-                site_key = await recaptcha_element.get_attribute("data-sitekey")
-                print(f"Found .g-recaptcha element with sitekey: {site_key}")
-            elif sitekey_element:
-                site_key = await sitekey_element.get_attribute("data-sitekey")
-                print(f"Found [data-sitekey] element with sitekey: {site_key}")
+            
+            # Method 1: Extract sitekey from page HTML using regex (most reliable)
+            sitekey_match = re.search(r'data-sitekey=["\']([^"\']+)["\']', content)
+            if sitekey_match:
+                site_key = sitekey_match.group(1)
+                print(f"Found sitekey via regex: {site_key}")
+            
+            # Method 2: Check for reCAPTCHA element
+            if not site_key:
+                recaptcha_element = await page.query_selector(".g-recaptcha")
+                if recaptcha_element:
+                    site_key = await recaptcha_element.get_attribute("data-sitekey")
+                    print(f"Found .g-recaptcha element with sitekey: {site_key}")
+            
+            # Method 3: Check any element with data-sitekey
+            if not site_key:
+                sitekey_element = await page.query_selector("[data-sitekey]")
+                if sitekey_element:
+                    site_key = await sitekey_element.get_attribute("data-sitekey")
+                    print(f"Found [data-sitekey] element with sitekey: {site_key}")
+            
+            # Method 4: Look in iframe src for sitekey
+            if not site_key:
+                iframe = await page.query_selector("iframe[src*='recaptcha']")
+                if iframe:
+                    src = await iframe.get_attribute("src")
+                    if src:
+                        k_match = re.search(r'[?&]k=([^&]+)', src)
+                        if k_match:
+                            site_key = k_match.group(1)
+                            print(f"Found sitekey in iframe src: {site_key}")
             
             if site_key:
                 print(f"Solving reCAPTCHA with sitekey: {site_key}")
@@ -221,6 +243,35 @@ class ArchiveRenderer:
                 # Print all elements with data-sitekey for debugging
                 all_sitekeys = await page.query_selector_all("[data-sitekey]")
                 print(f"Found {len(all_sitekeys)} elements with data-sitekey attribute")
+                
+                # Try waiting a bit for reCAPTCHA to fully load
+                print("Waiting 3 seconds for reCAPTCHA to load...")
+                await asyncio.sleep(3)
+                await page.screenshot(path="/data/captcha_after_wait.png")
+                
+                # Try regex again after waiting
+                content = await page.content()
+                sitekey_match = re.search(r'data-sitekey=["\']([^"\']+)["\']', content)
+                if sitekey_match:
+                    site_key = sitekey_match.group(1)
+                    print(f"Found sitekey after wait: {site_key}")
+                    
+                    solution = await self._solve_captcha(page, site_key, 'recaptcha')
+                    if solution:
+                        await page.evaluate(f"""
+                            var response = '{solution}';
+                            var el = document.querySelector('#g-recaptcha-response') || 
+                                     document.querySelector('textarea[name="g-recaptcha-response"]') ||
+                                     document.querySelector('[name="g-recaptcha-response"]');
+                            if (el) el.value = response;
+                        """)
+                        
+                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"], button')
+                        if submit_btn:
+                            await submit_btn.click()
+                            await page.wait_for_load_state("domcontentloaded", timeout=60000)
+                        return True
+                
                 return False
             
             print("No CAPTCHA found on page")
