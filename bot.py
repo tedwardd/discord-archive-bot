@@ -163,26 +163,10 @@ class ArchiveCog(commands.Cog, name="Archive"):
         if result.found and result.archive_url:
             embed = discord.Embed(
                 title="Archived Version Found",
-                description=f"Here's an archived version of that article:",
+                description="Here's an archived version of that article:",
                 color=discord.Color.green()
             )
             embed.add_field(name="Archive Link", value=result.archive_url, inline=False)
-            embed.add_field(name="Original URL", value=url, inline=False)
-            await message.reply(embed=embed, mention_author=False)
-            
-        elif result.submitted:
-            archive_url = result.archive_url or f"https://archive.is/newest/{url}"
-            embed = discord.Embed(
-                title="Archive Not Found - Archiving Initiated",
-                description=(
-                    "This page has not yet been archived. "
-                    "I've submitted it to archive.is for archiving.\n\n"
-                    "**Note:** Archiving can take several minutes to complete."
-                ),
-                color=discord.Color.orange()
-            )
-            embed.add_field(name="Archive URL", value=archive_url, inline=False)
-            embed.add_field(name="Original URL", value=url, inline=False)
             await message.reply(embed=embed, mention_author=False)
             
         elif result.error:
@@ -192,13 +176,26 @@ class ArchiveCog(commands.Cog, name="Archive"):
                 color=discord.Color.red()
             )
             if result.archive_url:
-                embed.add_field(name="Manual Archive Link", value=result.archive_url, inline=False)
+                embed.add_field(name="Archive Manually", value=result.archive_url, inline=False)
+            await message.reply(embed=embed, mention_author=False)
+            
+        else:
+            # No archive found - provide manual link
+            embed = discord.Embed(
+                title="No Archive Found",
+                description=(
+                    "This page has not been archived yet.\n\n"
+                    "Click the link below to archive it manually (may require CAPTCHA)."
+                ),
+                color=discord.Color.orange()
+            )
+            embed.add_field(name="Archive This Page", value=result.archive_url, inline=False)
             await message.reply(embed=embed, mention_author=False)
     
-    @commands.hybrid_command(name="archive", description="Manually check/archive a URL")
-    @app_commands.describe(url="The URL to check or archive")
+    @commands.hybrid_command(name="archive", description="Check for an archived version of a URL")
+    @app_commands.describe(url="The URL to check")
     async def manual_archive(self, ctx: commands.Context, url: str):
-        """Manually check if a URL is archived and archive it if not."""
+        """Check if a URL is archived and provide a link if not."""
         if not url.startswith("http"):
             url = "https://" + url
         
@@ -208,34 +205,32 @@ class ArchiveCog(commands.Cog, name="Archive"):
         if result.found and result.archive_url:
             embed = discord.Embed(
                 title="Archived Version Found",
-                description=f"Here's an archived version:",
+                description="Here's an archived version:",
                 color=discord.Color.green()
             )
             embed.add_field(name="Archive Link", value=result.archive_url, inline=False)
             await ctx.send(embed=embed)
             
-        elif result.submitted:
-            archive_url = result.archive_url or f"https://archive.is/newest/{url}"
+        elif result.error:
             embed = discord.Embed(
-                title="Archive Initiated",
-                description=(
-                    "This page was not found in the archive. "
-                    "I've submitted it for archiving.\n\n"
-                    "Archiving typically takes a few minutes."
-                ),
-                color=discord.Color.orange()
+                title="Archive Check Failed",
+                description=result.error,
+                color=discord.Color.red()
             )
-            embed.add_field(name="Archive URL", value=archive_url, inline=False)
+            if result.archive_url:
+                embed.add_field(name="Archive Manually", value=result.archive_url, inline=False)
             await ctx.send(embed=embed)
             
         else:
             embed = discord.Embed(
-                title="Archive Failed",
-                description=result.error or "Could not archive the URL.",
-                color=discord.Color.red()
+                title="No Archive Found",
+                description=(
+                    "This page has not been archived yet.\n\n"
+                    "Click the link below to archive it manually (may require CAPTCHA)."
+                ),
+                color=discord.Color.orange()
             )
-            if result.archive_url:
-                embed.add_field(name="Manual Archive Link", value=result.archive_url, inline=False)
+            embed.add_field(name="Archive This Page", value=result.archive_url, inline=False)
             await ctx.send(embed=embed)
 
 

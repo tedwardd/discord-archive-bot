@@ -1,4 +1,3 @@
-import asyncio
 import aiohttp
 from urllib.parse import quote
 from dataclasses import dataclass
@@ -116,88 +115,25 @@ class ArchiveService:
         except aiohttp.ClientError as e:
             return ArchiveResult(found=False, error=str(e))
     
-    async def submit_archive(self, url: str, retries: int = 2) -> ArchiveResult:
-        """
-        Submit a URL to be archived on archive.is.
-        Note: This initiates the archiving process but doesn't wait for completion.
-        """
-        session = await self._get_session()
-        
-        submit_url = f"{self.BASE_URL}/submit/"
-        
-        for attempt in range(retries + 1):
-            try:
-                # First, get the submit page to obtain any necessary tokens
-                async with session.get(self.BASE_URL) as response:
-                    if response.status == 429:
-                        if attempt < retries:
-                            await asyncio.sleep(2 ** attempt)  # Exponential backoff
-                            continue
-                        return ArchiveResult(
-                            found=False,
-                            archive_url=f"{self.BASE_URL}/?run=1&url={quote(url, safe='')}",
-                            error="Rate limited by archive.today. Use the link to archive manually.",
-                            submitted=False
-                        )
-                    if response.status != 200:
-                        return ArchiveResult(
-                            found=False, 
-                            error="Could not access archive.today",
-                            submitted=False
-                        )
-                
-                # Submit the URL for archiving
-                data = {"url": url}
-                async with session.post(
-                    submit_url, 
-                    data=data,
-                    allow_redirects=False
-                ) as response:
-                    # Handle rate limiting
-                    if response.status == 429:
-                        if attempt < retries:
-                            await asyncio.sleep(2 ** attempt)
-                            continue
-                        return ArchiveResult(
-                            found=False,
-                            archive_url=f"{self.BASE_URL}/?run=1&url={quote(url, safe='')}",
-                            error="Rate limited by archive.today. Use the link to archive manually.",
-                            submitted=False
-                        )
-                    
-                    # archive.is typically redirects to the new archive page
-                    if response.status in (200, 301, 302, 303, 307, 308):
-                        location = response.headers.get('Location', '')
-                        return ArchiveResult(
-                            found=False,
-                            archive_url=location if location else None,
-                            submitted=True
-                        )
-                    
-                    return ArchiveResult(
-                        found=False,
-                        error=f"Unexpected response: {response.status}",
-                        submitted=False
-                    )
-                    
-            except aiohttp.ClientError as e:
-                if attempt < retries:
-                    await asyncio.sleep(2 ** attempt)
-                    continue
-                return ArchiveResult(found=False, error=str(e), submitted=False)
-        
-        return ArchiveResult(found=False, error="Max retries exceeded", submitted=False)
+    def get_manual_archive_url(self, url: str) -> str:
+        """Get the URL for manually archiving a page."""
+        return f"{self.BASE_URL}/?run=1&url={quote(url, safe='')}"
     
     async def check_and_archive(self, url: str) -> ArchiveResult:
         """
-        Check if a URL is archived, and if not, submit it for archiving.
+        Check if a URL is archived. If not, return a link for manual archiving.
+        Note: Automatic submission is not possible due to CAPTCHA requirements.
         """
-        # First check if it's already archived
+        # Check if it's already archived
         result = await self.check_archive_simple(url)
         
         if result.found:
             return result
         
-        # Not found, try to submit for archiving
-        submit_result = await self.submit_archive(url)
-        return submit_result
+        # Not found - provide manual archive link
+        # We can't submit automatically due to CAPTCHA
+        return ArchiveResult(
+            found=False,
+            archive_url=self.get_manual_archive_url(url),
+            submitted=False
+        )

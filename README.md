@@ -119,9 +119,9 @@ All commands support both prefix (`!`) and slash (`/`) command formats.
 
 1. A user posts a message containing a URL like `https://www.nytimes.com/2024/article-title`
 2. The bot detects the URL matches a configured paywall site
-3. The bot checks archive.is for an existing archive
+3. The bot checks archive.today for an existing archive
 4. If found, it replies with the archived link
-5. If not found, it submits the URL for archiving and notifies the user
+5. If not found, it provides a link for manual archiving (CAPTCHA required by archive.today)
 
 ## File Structure
 
