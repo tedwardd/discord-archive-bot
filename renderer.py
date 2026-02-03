@@ -58,16 +58,17 @@ class ArchiveRenderer:
         Called in executor to avoid blocking.
         """
         try:
-            from solvecaptcha import SolveCaptcha
+            from solvecaptcha import Solvecaptcha
             
-            solver = SolveCaptcha(self.captcha_api_key)
+            solver = Solvecaptcha(self.captcha_api_key)
             result = solver.recaptcha(
                 sitekey=site_key,
                 url=page_url
             )
+            logger.info(f"SolveCaptcha recaptcha result: {result}")
             return result.get('code')
         except Exception as e:
-            logger.info(f"SolveCaptcha error: {e}")
+            logger.error(f"SolveCaptcha recaptcha error: {e}")
             return None
     
     def _solve_hcaptcha_sync(self, site_key: str, page_url: str) -> str | None:
@@ -76,16 +77,17 @@ class ArchiveRenderer:
         Called in executor to avoid blocking.
         """
         try:
-            from solvecaptcha import SolveCaptcha
+            from solvecaptcha import Solvecaptcha
             
-            solver = SolveCaptcha(self.captcha_api_key)
+            solver = Solvecaptcha(self.captcha_api_key)
             result = solver.hcaptcha(
                 sitekey=site_key,
                 url=page_url
             )
+            logger.info(f"SolveCaptcha hcaptcha result: {result}")
             return result.get('code')
         except Exception as e:
-            logger.info(f"SolveCaptcha error: {e}")
+            logger.error(f"SolveCaptcha hcaptcha error: {e}")
             return None
     
     async def _solve_captcha(self, page: Page, site_key: str, captcha_type: str, timeout: int = 120) -> str | None:
