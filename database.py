@@ -11,22 +11,28 @@ async def init_db():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS watched_sites (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                domain TEXT UNIQUE NOT NULL,
+                guild_id TEXT NOT NULL,
+                domain TEXT NOT NULL,
                 added_by TEXT,
-                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(guild_id, domain)
             )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_watched_sites_guild 
+            ON watched_sites(guild_id)
         """)
         await db.commit()
 
 
-async def add_watched_site(domain: str, added_by: str) -> bool:
-    """Add a domain to the watched sites list. Returns True if added, False if exists."""
+async def add_watched_site(guild_id: str, domain: str, added_by: str) -> bool:
+    """Add a domain to the watched sites list for a guild. Returns True if added, False if exists."""
     domain = domain.lower().strip()
     async with aiosqlite.connect(DATABASE_PATH) as db:
         try:
             await db.execute(
-                "INSERT INTO watched_sites (domain, added_by) VALUES (?, ?)",
-                (domain, added_by)
+                "INSERT INTO watched_sites (guild_id, domain, added_by) VALUES (?, ?, ?)",
+                (guild_id, domain, added_by)
             )
             await db.commit()
             return True
@@ -34,33 +40,36 @@ async def add_watched_site(domain: str, added_by: str) -> bool:
             return False
 
 
-async def remove_watched_site(domain: str) -> bool:
-    """Remove a domain from the watched sites list. Returns True if removed."""
+async def remove_watched_site(guild_id: str, domain: str) -> bool:
+    """Remove a domain from the watched sites list for a guild. Returns True if removed."""
     domain = domain.lower().strip()
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
-            "DELETE FROM watched_sites WHERE domain = ?",
-            (domain,)
+            "DELETE FROM watched_sites WHERE guild_id = ? AND domain = ?",
+            (guild_id, domain)
         )
         await db.commit()
         return cursor.rowcount > 0
 
 
-async def get_watched_sites() -> list[str]:
-    """Get all watched site domains."""
+async def get_watched_sites(guild_id: str) -> list[str]:
+    """Get all watched site domains for a guild."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute("SELECT domain FROM watched_sites ORDER BY domain")
+        cursor = await db.execute(
+            "SELECT domain FROM watched_sites WHERE guild_id = ? ORDER BY domain",
+            (guild_id,)
+        )
         rows = await cursor.fetchall()
         return [row[0] for row in rows]
 
 
-async def is_watched_site(domain: str) -> bool:
-    """Check if a domain is in the watched sites list."""
+async def is_watched_site(guild_id: str, domain: str) -> bool:
+    """Check if a domain is in the watched sites list for a guild."""
     domain = domain.lower().strip()
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
-            "SELECT 1 FROM watched_sites WHERE ? LIKE '%' || domain || '%' LIMIT 1",
-            (domain,)
+            "SELECT 1 FROM watched_sites WHERE guild_id = ? AND ? LIKE '%' || domain || '%' LIMIT 1",
+            (guild_id, domain)
         )
         row = await cursor.fetchone()
         return row is not None

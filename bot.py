@@ -51,6 +51,7 @@ class SiteManagementCog(commands.Cog, name="Site Management"):
     @commands.hybrid_command(name="addsite", description="Add a domain to the watched sites list")
     @app_commands.describe(domain="The domain to add (e.g., nytimes.com)")
     @commands.has_permissions(manage_messages=True)
+    @commands.guild_only()
     async def add_site(self, ctx: commands.Context, domain: str):
         """Add a domain to the watched sites list."""
         # Clean up the domain
@@ -67,7 +68,7 @@ class SiteManagementCog(commands.Cog, name="Site Management"):
             await ctx.send("Please provide a valid domain.")
             return
         
-        added = await add_watched_site(domain, str(ctx.author))
+        added = await add_watched_site(str(ctx.guild.id), domain, str(ctx.author))
         if added:
             await ctx.send(f"Added `{domain}` to the watched sites list.")
         else:
@@ -76,22 +77,24 @@ class SiteManagementCog(commands.Cog, name="Site Management"):
     @commands.hybrid_command(name="removesite", description="Remove a domain from the watched sites list")
     @app_commands.describe(domain="The domain to remove")
     @commands.has_permissions(manage_messages=True)
+    @commands.guild_only()
     async def remove_site(self, ctx: commands.Context, domain: str):
         """Remove a domain from the watched sites list."""
         domain = domain.lower().strip()
         if domain.startswith("www."):
             domain = domain[4:]
         
-        removed = await remove_watched_site(domain)
+        removed = await remove_watched_site(str(ctx.guild.id), domain)
         if removed:
             await ctx.send(f"Removed `{domain}` from the watched sites list.")
         else:
             await ctx.send(f"`{domain}` was not in the watched sites list.")
     
     @commands.hybrid_command(name="listsites", description="List all sites being monitored for archiving")
+    @commands.guild_only()
     async def list_sites(self, ctx: commands.Context):
         """List all domains in the watched sites list."""
-        sites = await get_watched_sites()
+        sites = await get_watched_sites(str(ctx.guild.id))
         
         if not sites:
             await ctx.send("No sites are currently being monitored.")
@@ -155,8 +158,8 @@ class ArchiveCog(commands.Cog, name="Archive"):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Listen for messages containing URLs from watched sites."""
-        # Ignore bot messages
-        if message.author.bot:
+        # Ignore bot messages and DMs
+        if message.author.bot or not message.guild:
             return
         
         # Find all URLs in the message
@@ -165,7 +168,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
         if not urls:
             return
         
-        watched_sites = await get_watched_sites()
+        watched_sites = await get_watched_sites(str(message.guild.id))
         if not watched_sites:
             return
         
