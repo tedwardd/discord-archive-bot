@@ -94,8 +94,11 @@ class ArchiveService:
         try:
             async with session.get(check_url, allow_redirects=False) as response:
                 if response.status == 429:
-                    # Rate limited, but we can still provide the check URL
-                    return ArchiveResult(found=False)
+                    return ArchiveResult(
+                        found=False,
+                        archive_url=self.get_search_url(url),
+                        error="Rate limited by archive.today. Use the link to check manually."
+                    )
                 
                 if response.status in (301, 302, 303, 307, 308):
                     # Redirect means an archive exists
@@ -113,7 +116,15 @@ class ArchiveService:
                 return ArchiveResult(found=False)
                 
         except aiohttp.ClientError as e:
-            return ArchiveResult(found=False, error=str(e))
+            return ArchiveResult(
+                found=False, 
+                archive_url=self.get_search_url(url),
+                error=str(e)
+            )
+    
+    def get_search_url(self, url: str) -> str:
+        """Get the URL to search for existing archives."""
+        return f"{self.BASE_URL}/{quote(url, safe='')}"
     
     def get_manual_archive_url(self, url: str) -> str:
         """Get the URL for manually archiving a page."""
@@ -127,7 +138,7 @@ class ArchiveService:
         # Check if it's already archived
         result = await self.check_archive_simple(url)
         
-        if result.found:
+        if result.found or result.error:
             return result
         
         # Not found - provide manual archive link
