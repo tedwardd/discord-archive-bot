@@ -1,0 +1,9 @@
+services:
+  archive-bot:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    environment:
+      - DISCORD_TOKEN=your_discord_bot_token_here
+      - DATABASE_PATH=/data/archive_bot.db
