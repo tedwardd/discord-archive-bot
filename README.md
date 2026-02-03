@@ -89,31 +89,32 @@ docker compose down
 
 ## Commands
 
-All commands support both prefix (`!`) and slash (`/`) command formats.
+All commands use Discord slash commands.
 
 ### Site Management
 
 | Command | Description | Permission Required |
 |---------|-------------|---------------------|
-| `!addsite <domain>` | Add a domain to the watch list | Manage Messages |
-| `!removesite <domain>` | Remove a domain from the watch list | Manage Messages |
-| `!listsites` | List all monitored sites | None |
+| `/addsite <domain>` | Add a domain to the watch list | Manage Messages |
+| `/removesite <domain>` | Remove a domain from the watch list | Manage Messages |
+| `/listsites` | List all monitored sites | None |
 
 ### Archive Commands
 
 | Command | Description |
 |---------|-------------|
-| `!archive <url>` | Get archive.today links for any URL |
-| `!render <url>` | Create an archived version of a URL |
+| `/archive <url>` | Get archive.today links for any URL |
+| `/render <url>` | Create an archived version of a URL |
+| `/archivehelp` | Show all available commands |
 
 ## Usage Examples
 
 ### Adding Sites to Watch
 
 ```
-!addsite nytimes.com
-!addsite wsj.com
-!addsite washingtonpost.com
+/addsite nytimes.com
+/addsite wsj.com
+/addsite washingtonpost.com
 ```
 
 ### How It Works

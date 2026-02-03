@@ -29,8 +29,8 @@ class ArchiveBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         
-        prefix = os.getenv("COMMAND_PREFIX", "!")
-        super().__init__(command_prefix=prefix, intents=intents, help_command=None)
+        # Use slash commands only (prefix set to unused value)
+        super().__init__(command_prefix="!", intents=intents, help_command=None)
         
         self.archive_service = ArchiveService()
         self.archive_renderer = ArchiveRenderer()
@@ -123,41 +123,37 @@ class SiteManagementCog(commands.Cog, name="Site Management"):
     @commands.hybrid_command(name="archivehelp", description="Show Archive Bot commands")
     async def archive_help(self, ctx: commands.Context):
         """Show help for Archive Bot commands."""
-        prefix = os.getenv("COMMAND_PREFIX", "!")
-        
         embed = discord.Embed(
             title="Archive Bot Help",
-            description="Automatically detects URLs from watched sites and provides archived versions.",
+            description="Automatically detects URLs from watched sites and creates archived versions.",
             color=discord.Color.blue()
         )
         
         embed.add_field(
-            name=f"{prefix}archive <url>",
+            name="/archive <url>",
             value="Get archive.today links for any URL",
             inline=False
         )
         embed.add_field(
-            name=f"{prefix}render <url>",
+            name="/render <url>",
             value="Create an archived version of a URL",
             inline=False
         )
         embed.add_field(
-            name=f"{prefix}listsites",
+            name="/listsites",
             value="List all monitored sites",
             inline=False
         )
         embed.add_field(
-            name=f"{prefix}addsite <domain>",
+            name="/addsite <domain>",
             value="Add a site to watch (requires Manage Messages)",
             inline=False
         )
         embed.add_field(
-            name=f"{prefix}removesite <domain>",
+            name="/removesite <domain>",
             value="Remove a watched site (requires Manage Messages)",
             inline=False
         )
-        
-        embed.set_footer(text="Tip: Slash commands (/archive, /listsites, etc.) also work!")
         
         await ctx.send(embed=embed)
 
@@ -173,11 +169,6 @@ class ArchiveCog(commands.Cog, name="Archive"):
         """Listen for messages containing URLs from watched sites."""
         # Ignore bot messages and DMs
         if message.author.bot or not message.guild:
-            return
-        
-        # Ignore messages that are bot commands
-        prefix = os.getenv("COMMAND_PREFIX", "!")
-        if message.content.startswith(prefix):
             return
         
         # Find all URLs in the message
