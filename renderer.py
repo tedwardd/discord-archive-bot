@@ -182,51 +182,101 @@ class ArchiveRenderer:
                 solution = await self._solve_captcha(page, site_key, 'recaptcha')
                 if solution:
                     logger.info(f"Got solution, injecting...")
-                    # Inject the solution
+                    
+                    # First, inject the solution into the response textarea
                     await page.evaluate(f"""
-                        var response = '{solution}';
-                        // Try various ways to set the response
-                        var el1 = document.querySelector('#g-recaptcha-response');
-                        if (el1) el1.value = response;
-                        
-                        var el2 = document.querySelector('textarea[name="g-recaptcha-response"]');
-                        if (el2) el2.value = response;
-                        
-                        var el3 = document.querySelector('[name="g-recaptcha-response"]');
-                        if (el3) el3.value = response;
-                        
-                        // Try to trigger callback if exists
-                        if (typeof ___grecaptcha_cfg !== 'undefined') {{
-                            var clients = ___grecaptcha_cfg.clients;
-                            for (var key in clients) {{
-                                if (clients[key].callback) {{
-                                    clients[key].callback(response);
+                        (function() {{
+                            var response = '{solution}';
+                            
+                            // Set the response in all possible textareas
+                            var textareas = document.querySelectorAll('textarea[name="g-recaptcha-response"]');
+                            textareas.forEach(function(ta) {{
+                                ta.value = response;
+                                ta.innerHTML = response;
+                            }});
+                            
+                            var el = document.querySelector('#g-recaptcha-response');
+                            if (el) {{
+                                el.value = response;
+                                el.innerHTML = response;
+                            }}
+                        }})();
+                    """)
+                    logger.info("Solution injected into textarea")
+                    
+                    # Now try to find and click the reCAPTCHA checkbox
+                    # The checkbox is inside an iframe
+                    recaptcha_frame = page.frame_locator("iframe[src*='recaptcha']")
+                    try:
+                        checkbox = recaptcha_frame.locator(".recaptcha-checkbox-border, #recaptcha-anchor")
+                        if await checkbox.count() > 0:
+                            logger.info("Found reCAPTCHA checkbox, clicking...")
+                            await checkbox.first.click()
+                            await asyncio.sleep(3)
+                    except Exception as e:
+                        logger.info(f"Could not click checkbox in iframe: {e}")
+                    
+                    # Try triggering the callback directly
+                    callback_result = await page.evaluate(f"""
+                        (function() {{
+                            var response = '{solution}';
+                            
+                            // Try to find and call the callback
+                            if (typeof ___grecaptcha_cfg !== 'undefined') {{
+                                var clients = ___grecaptcha_cfg.clients;
+                                for (var cid in clients) {{
+                                    var client = clients[cid];
+                                    for (var key in client) {{
+                                        var widget = client[key];
+                                        if (widget && typeof widget === 'object') {{
+                                            // Look deeper for callback
+                                            for (var prop in widget) {{
+                                                if (widget[prop] && widget[prop].callback) {{
+                                                    widget[prop].callback(response);
+                                                    return 'callback_found_and_triggered';
+                                                }}
+                                            }}
+                                        }}
+                                    }}
                                 }}
                             }}
-                        }}
+                            
+                            // Try window callback
+                            if (typeof verifyCallback === 'function') {{
+                                verifyCallback(response);
+                                return 'verifyCallback_triggered';
+                            }}
+                            
+                            // Submit form if exists
+                            var form = document.querySelector('form');
+                            if (form) {{
+                                form.submit();
+                                return 'form_submitted';
+                            }}
+                            
+                            return 'no_action_taken';
+                        }})();
                     """)
+                    logger.info(f"Callback result: {callback_result}")
                     
-                    # Find and submit the form
-                    # First try to find a form and submit it
-                    form = await page.query_selector('form')
-                    if form:
-                        logger.info("Found form, submitting...")
-                        await form.evaluate("form => form.submit()")
-                    else:
-                        # Try clicking submit button
-                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"], button')
-                        if submit_btn:
-                            logger.info("Clicking submit button...")
-                            await submit_btn.click()
+                    await asyncio.sleep(3)
+                    await page.screenshot(path="/data/after_captcha_callback.png")
+                    logger.info(f"After callback - URL: {page.url}")
                     
-                    # Wait for navigation
-                    logger.info("Waiting for navigation after CAPTCHA submit...")
-                    await page.wait_for_load_state("domcontentloaded", timeout=60000)
-                    await asyncio.sleep(2)  # Extra wait for redirects
+                    # If still on challenge page, try submitting via POST with the token
+                    if "archive.ph" in page.url and len(page.url.replace("https://archive.ph", "").replace("/", "")) < 5:
+                        logger.info("Still on challenge page, trying form submission...")
+                        
+                        # Look for any form and submit it
+                        form_count = await page.evaluate("document.querySelectorAll('form').length")
+                        logger.info(f"Found {form_count} forms on page")
+                        
+                        if form_count > 0:
+                            await page.evaluate("document.querySelector('form').submit()")
+                            await asyncio.sleep(3)
                     
                     await page.screenshot(path="/data/after_captcha_submit.png")
-                    logger.info(f"After CAPTCHA submit - URL: {page.url}")
-                    logger.info("Screenshot saved to /data/after_captcha_submit.png")
+                    logger.info(f"After CAPTCHA handling - URL: {page.url}")
                     return True
                 else:
                     logger.info("Failed to solve reCAPTCHA - no solution returned")
