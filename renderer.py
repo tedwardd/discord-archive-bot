@@ -206,14 +206,27 @@ class ArchiveRenderer:
                         }}
                     """)
                     
-                    # Find and click submit button
-                    submit_btn = await page.query_selector('input[type="submit"], button[type="submit"], button')
-                    if submit_btn:
-                        logger.info("Clicking submit button...")
-                        await submit_btn.click()
-                        await page.wait_for_load_state("domcontentloaded", timeout=60000)
-                        await page.screenshot(path="/data/after_captcha_submit.png")
-                        logger.info("Screenshot after submit saved to /data/after_captcha_submit.png")
+                    # Find and submit the form
+                    # First try to find a form and submit it
+                    form = await page.query_selector('form')
+                    if form:
+                        logger.info("Found form, submitting...")
+                        await form.evaluate("form => form.submit()")
+                    else:
+                        # Try clicking submit button
+                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"], button')
+                        if submit_btn:
+                            logger.info("Clicking submit button...")
+                            await submit_btn.click()
+                    
+                    # Wait for navigation
+                    logger.info("Waiting for navigation after CAPTCHA submit...")
+                    await page.wait_for_load_state("domcontentloaded", timeout=60000)
+                    await asyncio.sleep(2)  # Extra wait for redirects
+                    
+                    await page.screenshot(path="/data/after_captcha_submit.png")
+                    logger.info(f"After CAPTCHA submit - URL: {page.url}")
+                    logger.info("Screenshot saved to /data/after_captcha_submit.png")
                     return True
                 else:
                     logger.info("Failed to solve reCAPTCHA - no solution returned")
@@ -371,30 +384,46 @@ class ArchiveRenderer:
                 
                 # Wait for the archive to complete or find existing
                 # archive.today redirects to the archived page when done
+                logger.info("Waiting for archive to complete...")
                 start_time = asyncio.get_event_loop().time()
+                iteration = 0
                 while (asyncio.get_event_loop().time() - start_time) * 1000 < timeout:
                     current_url = page.url
+                    iteration += 1
+                    logger.info(f"Poll iteration {iteration}: URL = {current_url}")
                     
                     # Check if we're on an archived page
                     if "/wip/" in current_url:
                         # Still processing, wait
-                        await asyncio.sleep(2)
+                        logger.info("Archive in progress (wip), waiting...")
+                        await asyncio.sleep(3)
                         await page.reload()
                         continue
                     elif "archive.today/" in current_url or "archive.is/" in current_url or "archive.ph/" in current_url:
                         # Check if it's a valid archive URL (has a hash)
-                        path = current_url.split("archive.today/")[-1].split("archive.is/")[-1]
-                        if path and not path.startswith("?") and len(path) > 5:
+                        # Split by all possible domains
+                        path = current_url
+                        for domain in ["archive.today/", "archive.is/", "archive.ph/"]:
+                            if domain in path:
+                                path = path.split(domain)[-1]
+                                break
+                        
+                        logger.info(f"Checking path: {path}")
+                        if path and not path.startswith("?") and not path.startswith("http") and len(path) >= 5:
+                            logger.info(f"Found valid archive URL: {current_url}")
+                            await page.screenshot(path="/data/render_success.png")
                             return RenderResult(
                                 success=True,
                                 archive_url=current_url
                             )
                     
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(3)
                 
+                await page.screenshot(path="/data/render_timeout.png")
+                logger.info(f"Timeout. Final URL: {page.url}")
                 return RenderResult(
                     success=False,
-                    error="Timeout waiting for archive to complete"
+                    error=f"Timeout waiting for archive to complete. Final URL: {page.url}"
                 )
                 
             finally:
