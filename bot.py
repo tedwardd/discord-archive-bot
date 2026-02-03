@@ -24,7 +24,7 @@ class ArchiveBot(commands.Bot):
         intents.message_content = True
         
         prefix = os.getenv("COMMAND_PREFIX", "!")
-        super().__init__(command_prefix=prefix, intents=intents)
+        super().__init__(command_prefix=prefix, intents=intents, help_command=None)
         
         self.archive_service = ArchiveService()
     
@@ -106,6 +106,42 @@ class PaywallCog(commands.Cog, name="Paywall Management"):
             color=discord.Color.blue()
         )
         embed.set_footer(text=f"Total: {len(sites)} sites")
+        
+        await ctx.send(embed=embed)
+    
+    @commands.hybrid_command(name="archivehelp", description="Show Archive Bot commands")
+    async def archive_help(self, ctx: commands.Context):
+        """Show help for Archive Bot commands."""
+        prefix = os.getenv("COMMAND_PREFIX", "!")
+        
+        embed = discord.Embed(
+            title="Archive Bot Help",
+            description="Automatically detects paywall URLs and provides archived versions.",
+            color=discord.Color.blue()
+        )
+        
+        embed.add_field(
+            name=f"{prefix}archive <url>",
+            value="Get archived version of any URL",
+            inline=False
+        )
+        embed.add_field(
+            name=f"{prefix}listsites",
+            value="List all monitored paywall sites",
+            inline=False
+        )
+        embed.add_field(
+            name=f"{prefix}addsite <domain>",
+            value="Add a paywall site (requires Manage Messages)",
+            inline=False
+        )
+        embed.add_field(
+            name=f"{prefix}removesite <domain>",
+            value="Remove a paywall site (requires Manage Messages)",
+            inline=False
+        )
+        
+        embed.set_footer(text="Tip: Slash commands (/archive, /listsites, etc.) also work!")
         
         await ctx.send(embed=embed)
 
