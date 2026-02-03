@@ -46,6 +46,24 @@ class ArchiveRenderer:
             self.playwright = None
         self.executor.shutdown(wait=False)
     
+    def _solve_recaptcha_sync(self, site_key: str, page_url: str) -> str | None:
+        """
+        Synchronous reCAPTCHA solver using SolveCaptcha.
+        Called in executor to avoid blocking.
+        """
+        try:
+            from solvecaptcha import SolveCaptcha
+            
+            solver = SolveCaptcha(self.captcha_api_key)
+            result = solver.recaptcha(
+                sitekey=site_key,
+                url=page_url
+            )
+            return result.get('code')
+        except Exception as e:
+            print(f"SolveCaptcha error: {e}")
+            return None
+    
     def _solve_hcaptcha_sync(self, site_key: str, page_url: str) -> str | None:
         """
         Synchronous hCaptcha solver using SolveCaptcha.
@@ -64,25 +82,28 @@ class ArchiveRenderer:
             print(f"SolveCaptcha error: {e}")
             return None
     
-    async def _solve_hcaptcha(self, page: Page, site_key: str, timeout: int = 120) -> str | None:
+    async def _solve_captcha(self, page: Page, site_key: str, captcha_type: str, timeout: int = 120) -> str | None:
         """
-        Solve hCaptcha using SolveCaptcha service.
+        Solve CAPTCHA using SolveCaptcha service.
         Returns the solution token or None if failed.
         
         Args:
             page: The Playwright page
-            site_key: The hCaptcha sitekey
+            site_key: The CAPTCHA sitekey
+            captcha_type: Either 'recaptcha' or 'hcaptcha'
             timeout: Maximum seconds to wait for solution (default 120)
         """
         if not self.captcha_api_key:
             return None
+        
+        solver_func = self._solve_recaptcha_sync if captcha_type == 'recaptcha' else self._solve_hcaptcha_sync
         
         loop = asyncio.get_event_loop()
         try:
             return await asyncio.wait_for(
                 loop.run_in_executor(
                     self.executor,
-                    self._solve_hcaptcha_sync,
+                    solver_func,
                     site_key,
                     page.url
                 ),
@@ -98,36 +119,64 @@ class ArchiveRenderer:
         Returns True if no CAPTCHA or successfully solved.
         """
         try:
-            # Check for hCaptcha iframe
-            hcaptcha_frame = page.frame_locator("iframe[src*='hcaptcha']")
-            if await hcaptcha_frame.locator("body").count() > 0:
-                # Find the sitekey
-                sitekey_element = await page.query_selector("[data-sitekey]")
-                if sitekey_element:
-                    site_key = await sitekey_element.get_attribute("data-sitekey")
-                    if site_key:
-                        print(f"Found hCaptcha with sitekey: {site_key}")
+            # Check for reCAPTCHA
+            recaptcha_element = await page.query_selector(".g-recaptcha, [data-sitekey]")
+            if recaptcha_element:
+                site_key = await recaptcha_element.get_attribute("data-sitekey")
+                if site_key:
+                    print(f"Found reCAPTCHA with sitekey: {site_key}")
+                    
+                    solution = await self._solve_captcha(page, site_key, 'recaptcha')
+                    if solution:
+                        # Inject the solution
+                        await page.evaluate(f"""
+                            document.querySelector('#g-recaptcha-response').value = '{solution}';
+                            // Also try textarea version
+                            var ta = document.querySelector('textarea[name="g-recaptcha-response"]');
+                            if (ta) ta.value = '{solution}';
+                        """)
                         
-                        solution = await self._solve_hcaptcha(page, site_key)
-                        if solution:
-                            # Inject the solution
-                            await page.evaluate(f"""
-                                document.querySelector('[name="h-captcha-response"]').value = '{solution}';
-                                document.querySelector('[name="g-recaptcha-response"]').value = '{solution}';
-                            """)
-                            
-                            # Submit the form
-                            await page.click('input[type="submit"]')
+                        # Find and click submit button
+                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"]')
+                        if submit_btn:
+                            await submit_btn.click()
                             await page.wait_for_load_state("networkidle", timeout=60000)
-                            return True
-                        else:
-                            return False
+                        return True
+                    else:
+                        print("Failed to solve reCAPTCHA")
+                        return False
             
-            return True  # No CAPTCHA found
+            # Check for hCaptcha iframe
+            hcaptcha_element = await page.query_selector("[data-hcaptcha-sitekey], .h-captcha")
+            if hcaptcha_element:
+                site_key = await hcaptcha_element.get_attribute("data-sitekey") or await hcaptcha_element.get_attribute("data-hcaptcha-sitekey")
+                if site_key:
+                    print(f"Found hCaptcha with sitekey: {site_key}")
+                    
+                    solution = await self._solve_captcha(page, site_key, 'hcaptcha')
+                    if solution:
+                        # Inject the solution
+                        await page.evaluate(f"""
+                            document.querySelector('[name="h-captcha-response"]').value = '{solution}';
+                            document.querySelector('[name="g-recaptcha-response"]').value = '{solution}';
+                        """)
+                        
+                        # Submit the form
+                        submit_btn = await page.query_selector('input[type="submit"], button[type="submit"]')
+                        if submit_btn:
+                            await submit_btn.click()
+                            await page.wait_for_load_state("networkidle", timeout=60000)
+                        return True
+                    else:
+                        print("Failed to solve hCaptcha")
+                        return False
+            
+            print("No CAPTCHA found on page")
+            return True
             
         except Exception as e:
             print(f"CAPTCHA check error: {e}")
-            return True  # Continue anyway
+            return False
     
     async def render_archive(self, url: str, timeout: int = 120000) -> RenderResult:
         """
@@ -156,7 +205,24 @@ class ArchiveRenderer:
             
             try:
                 # Navigate to archive.today (60s timeout - site can be slow)
-                await page.goto(self.ARCHIVE_URL, wait_until="networkidle", timeout=60000)
+                await page.goto(self.ARCHIVE_URL, wait_until="domcontentloaded", timeout=60000)
+                
+                # Check for CAPTCHA on initial page load
+                print("Checking for initial CAPTCHA...")
+                captcha_solved = await self._check_and_solve_captcha(page)
+                if not captcha_solved:
+                    return RenderResult(
+                        success=False,
+                        error="Failed to solve initial CAPTCHA"
+                    )
+                
+                # Now look for the URL input form
+                url_input = await page.query_selector('input[name="url"]')
+                if not url_input:
+                    return RenderResult(
+                        success=False,
+                        error="Could not find URL input form after CAPTCHA"
+                    )
                 
                 # Fill in the URL
                 await page.fill('input[name="url"]', url)
@@ -165,14 +231,14 @@ class ArchiveRenderer:
                 await page.click('input[type="submit"]')
                 
                 # Wait for navigation (60s timeout)
-                await page.wait_for_load_state("networkidle", timeout=60000)
+                await page.wait_for_load_state("domcontentloaded", timeout=60000)
                 
-                # Check for CAPTCHA and solve if needed
+                # Check for another CAPTCHA after submit
                 captcha_solved = await self._check_and_solve_captcha(page)
                 if not captcha_solved:
                     return RenderResult(
                         success=False,
-                        error="Failed to solve CAPTCHA"
+                        error="Failed to solve CAPTCHA after submit"
                     )
                 
                 # Wait for the archive to complete or find existing
