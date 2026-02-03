@@ -64,21 +64,33 @@ class ArchiveRenderer:
             print(f"SolveCaptcha error: {e}")
             return None
     
-    async def _solve_hcaptcha(self, page: Page, site_key: str) -> str | None:
+    async def _solve_hcaptcha(self, page: Page, site_key: str, timeout: int = 120) -> str | None:
         """
         Solve hCaptcha using SolveCaptcha service.
         Returns the solution token or None if failed.
+        
+        Args:
+            page: The Playwright page
+            site_key: The hCaptcha sitekey
+            timeout: Maximum seconds to wait for solution (default 120)
         """
         if not self.captcha_api_key:
             return None
         
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            self.executor,
-            self._solve_hcaptcha_sync,
-            site_key,
-            page.url
-        )
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(
+                    self.executor,
+                    self._solve_hcaptcha_sync,
+                    site_key,
+                    page.url
+                ),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            print(f"CAPTCHA solving timed out after {timeout} seconds")
+            return None
     
     async def _check_and_solve_captcha(self, page: Page) -> bool:
         """

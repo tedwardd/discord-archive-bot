@@ -276,18 +276,18 @@ class ArchiveCog(commands.Cog, name="Archive"):
         
         await ctx.send(embed=embed)
     
-    @commands.hybrid_command(name="render", description="Archive a URL using browser rendering (solves CAPTCHAs)")
-    @app_commands.describe(url="The URL to archive")
+    @commands.hybrid_command(name="render", description="Archive a URL on archive.today using browser rendering")
+    @app_commands.describe(url="The URL to archive on archive.today")
     async def render_archive(self, ctx: commands.Context, url: str):
-        """Archive a URL using browser rendering with CAPTCHA solving."""
+        """Archive a URL on archive.today using browser rendering with CAPTCHA solving."""
         if not url.startswith("http"):
             url = "https://" + url
         
         await ctx.defer()
         
         embed = discord.Embed(
-            title="Rendering Archive",
-            description="Attempting to archive via browser rendering. This may take a few minutes...",
+            title="Archiving via archive.today",
+            description="Using browser rendering to archive this page. This may take a few minutes while the CAPTCHA is solved...",
             color=discord.Color.orange()
         )
         status_msg = await ctx.send(embed=embed)
@@ -296,22 +296,22 @@ class ArchiveCog(commands.Cog, name="Archive"):
         
         if result.success and result.archive_url:
             embed = discord.Embed(
-                title="Archive Created",
-                description="Successfully archived the page.",
+                title="archive.today - Archive Created",
+                description="Successfully archived the page on archive.today.",
                 color=discord.Color.green()
             )
             embed.add_field(name="Archive URL", value=result.archive_url, inline=False)
         else:
             embed = discord.Embed(
-                title="Archive Failed",
+                title="archive.today - Archive Failed",
                 description=result.error or "Unknown error occurred.",
                 color=discord.Color.red()
             )
             # Provide fallback links
             links = self.bot.archive_service._get_archive_today_links(url)
             embed.add_field(
-                name="Try Manually",
-                value=f"[Search archive.today]({links[0]}) or [create new archive]({links[1]})",
+                name="Try Manually on archive.today",
+                value=f"[Search existing archives]({links[0]}) or [create new archive]({links[1]})",
                 inline=False
             )
         
