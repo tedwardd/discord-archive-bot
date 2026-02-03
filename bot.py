@@ -170,6 +170,11 @@ class ArchiveCog(commands.Cog, name="Archive"):
         if message.author.bot or not message.guild:
             return
         
+        # Ignore messages that are bot commands
+        prefix = os.getenv("COMMAND_PREFIX", "!")
+        if message.content.startswith(prefix):
+            return
+        
         # Find all URLs in the message
         urls = URL_PATTERN.findall(message.content)
         
