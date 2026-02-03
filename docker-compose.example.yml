@@ -7,3 +7,5 @@ services:
     environment:
       - DISCORD_TOKEN=your_discord_bot_token_here
       - DATABASE_PATH=/data/archive_bot.db
+      # Optional: SolveCaptcha API key for !render command (https://solvecaptcha.com)
+      - SOLVECAPTCHA_API_KEY=

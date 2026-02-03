@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from database import init_db, add_watched_site, remove_watched_site, get_watched_sites, is_watched_site
 from archive_service import ArchiveService
+from renderer import ArchiveRenderer
 
 load_dotenv()
 
@@ -27,6 +28,7 @@ class ArchiveBot(commands.Bot):
         super().__init__(command_prefix=prefix, intents=intents, help_command=None)
         
         self.archive_service = ArchiveService()
+        self.archive_renderer = ArchiveRenderer()
     
     async def setup_hook(self):
         """Called when the bot is starting up."""
@@ -39,6 +41,7 @@ class ArchiveBot(commands.Bot):
     async def close(self):
         """Cleanup when bot shuts down."""
         await self.archive_service.close()
+        await self.archive_renderer.close()
         await super().close()
 
 
@@ -126,6 +129,11 @@ class SiteManagementCog(commands.Cog, name="Site Management"):
         embed.add_field(
             name=f"{prefix}archive <url>",
             value="Get archived version of any URL",
+            inline=False
+        )
+        embed.add_field(
+            name=f"{prefix}render <url>",
+            value="Archive via browser rendering with CAPTCHA solving",
             inline=False
         )
         embed.add_field(
@@ -267,6 +275,47 @@ class ArchiveCog(commands.Cog, name="Archive"):
         )
         
         await ctx.send(embed=embed)
+    
+    @commands.hybrid_command(name="render", description="Archive a URL using browser rendering (solves CAPTCHAs)")
+    @app_commands.describe(url="The URL to archive")
+    async def render_archive(self, ctx: commands.Context, url: str):
+        """Archive a URL using browser rendering with CAPTCHA solving."""
+        if not url.startswith("http"):
+            url = "https://" + url
+        
+        await ctx.defer()
+        
+        embed = discord.Embed(
+            title="Rendering Archive",
+            description="Attempting to archive via browser rendering. This may take a few minutes...",
+            color=discord.Color.orange()
+        )
+        status_msg = await ctx.send(embed=embed)
+        
+        result = await self.bot.archive_renderer.render_archive(url)
+        
+        if result.success and result.archive_url:
+            embed = discord.Embed(
+                title="Archive Created",
+                description="Successfully archived the page.",
+                color=discord.Color.green()
+            )
+            embed.add_field(name="Archive URL", value=result.archive_url, inline=False)
+        else:
+            embed = discord.Embed(
+                title="Archive Failed",
+                description=result.error or "Unknown error occurred.",
+                color=discord.Color.red()
+            )
+            # Provide fallback links
+            links = self.bot.archive_service._get_archive_today_links(url)
+            embed.add_field(
+                name="Try Manually",
+                value=f"[Search archive.today]({links[0]}) or [create new archive]({links[1]})",
+                inline=False
+            )
+        
+        await status_msg.edit(embed=embed)
 
 
 def main():
