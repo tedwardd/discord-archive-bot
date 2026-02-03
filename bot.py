@@ -216,7 +216,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
         # Send initial status message
         embed = discord.Embed(
             title="Archiving Page",
-            description="Creating an archived version of this page. This may take a moment...",
+            description="Creating an archived version of this page. This may take a few minutes...",
             color=discord.Color.orange()
         )
         status_msg = await message.reply(embed=embed, mention_author=False)
@@ -279,7 +279,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
         
         embed = discord.Embed(
             title="Archiving Page",
-            description="Creating an archived version of this page. This may take a moment...",
+            description="Creating an archived version of this page. This may take a few minutes...",
             color=discord.Color.orange()
         )
         status_msg = await ctx.send(embed=embed)
