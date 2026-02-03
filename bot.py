@@ -1,5 +1,6 @@
 import os
 import re
+import logging
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -11,6 +12,10 @@ from archive_service import ArchiveService
 from renderer import ArchiveRenderer
 
 load_dotenv()
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # URL regex pattern
 URL_PATTERN = re.compile(
@@ -285,6 +290,8 @@ class ArchiveCog(commands.Cog, name="Archive"):
     @app_commands.describe(url="The URL to archive on archive.today")
     async def render_archive(self, ctx: commands.Context, url: str):
         """Archive a URL on archive.today using browser rendering with CAPTCHA solving."""
+        logger.info(f"!render command received for URL: {url}")
+        
         if not url.startswith("http"):
             url = "https://" + url
         
@@ -297,7 +304,9 @@ class ArchiveCog(commands.Cog, name="Archive"):
         )
         status_msg = await ctx.send(embed=embed)
         
+        logger.info("Starting archive_renderer.render_archive...")
         result = await self.bot.archive_renderer.render_archive(url)
+        logger.info(f"render_archive completed. Success: {result.success}, Error: {result.error}")
         
         if result.success and result.archive_url:
             embed = discord.Embed(

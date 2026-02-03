@@ -1,9 +1,14 @@
 import os
 import re
 import asyncio
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from playwright.async_api import async_playwright, Browser, Page
 from dataclasses import dataclass
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,7 +67,7 @@ class ArchiveRenderer:
             )
             return result.get('code')
         except Exception as e:
-            print(f"SolveCaptcha error: {e}")
+            logger.info(f"SolveCaptcha error: {e}")
             return None
     
     def _solve_hcaptcha_sync(self, site_key: str, page_url: str) -> str | None:
@@ -80,7 +85,7 @@ class ArchiveRenderer:
             )
             return result.get('code')
         except Exception as e:
-            print(f"SolveCaptcha error: {e}")
+            logger.info(f"SolveCaptcha error: {e}")
             return None
     
     async def _solve_captcha(self, page: Page, site_key: str, captcha_type: str, timeout: int = 120) -> str | None:
@@ -111,7 +116,7 @@ class ArchiveRenderer:
                 timeout=timeout
             )
         except asyncio.TimeoutError:
-            print(f"CAPTCHA solving timed out after {timeout} seconds")
+            logger.info(f"CAPTCHA solving timed out after {timeout} seconds")
             return None
     
     async def _check_and_solve_captcha(self, page: Page) -> bool:
@@ -122,19 +127,19 @@ class ArchiveRenderer:
         try:
             # Save debug screenshot
             await page.screenshot(path="/data/captcha_check.png")
-            print(f"Debug screenshot saved to /data/captcha_check.png")
-            print(f"Current URL: {page.url}")
+            logger.info(f"Debug screenshot saved to /data/captcha_check.png")
+            logger.info(f"Current URL: {page.url}")
             
             # Get page title to check for CAPTCHA page
             title = await page.title()
-            print(f"Page title: {title}")
+            logger.info(f"Page title: {title}")
             
             # Check page content for CAPTCHA indicators
             content = await page.content()
             has_recaptcha_script = "recaptcha" in content.lower()
             has_hcaptcha_script = "hcaptcha" in content.lower()
             has_one_more_step = "one more step" in content.lower()
-            print(f"Page contains: recaptcha={has_recaptcha_script}, hcaptcha={has_hcaptcha_script}, 'one more step'={has_one_more_step}")
+            logger.info(f"Page contains: recaptcha={has_recaptcha_script}, hcaptcha={has_hcaptcha_script}, 'one more step'={has_one_more_step}")
             
             site_key = None
             
@@ -142,21 +147,21 @@ class ArchiveRenderer:
             sitekey_match = re.search(r'data-sitekey=["\']([^"\']+)["\']', content)
             if sitekey_match:
                 site_key = sitekey_match.group(1)
-                print(f"Found sitekey via regex: {site_key}")
+                logger.info(f"Found sitekey via regex: {site_key}")
             
             # Method 2: Check for reCAPTCHA element
             if not site_key:
                 recaptcha_element = await page.query_selector(".g-recaptcha")
                 if recaptcha_element:
                     site_key = await recaptcha_element.get_attribute("data-sitekey")
-                    print(f"Found .g-recaptcha element with sitekey: {site_key}")
+                    logger.info(f"Found .g-recaptcha element with sitekey: {site_key}")
             
             # Method 3: Check any element with data-sitekey
             if not site_key:
                 sitekey_element = await page.query_selector("[data-sitekey]")
                 if sitekey_element:
                     site_key = await sitekey_element.get_attribute("data-sitekey")
-                    print(f"Found [data-sitekey] element with sitekey: {site_key}")
+                    logger.info(f"Found [data-sitekey] element with sitekey: {site_key}")
             
             # Method 4: Look in iframe src for sitekey
             if not site_key:
@@ -167,14 +172,14 @@ class ArchiveRenderer:
                         k_match = re.search(r'[?&]k=([^&]+)', src)
                         if k_match:
                             site_key = k_match.group(1)
-                            print(f"Found sitekey in iframe src: {site_key}")
+                            logger.info(f"Found sitekey in iframe src: {site_key}")
             
             if site_key:
-                print(f"Solving reCAPTCHA with sitekey: {site_key}")
+                logger.info(f"Solving reCAPTCHA with sitekey: {site_key}")
                 
                 solution = await self._solve_captcha(page, site_key, 'recaptcha')
                 if solution:
-                    print(f"Got solution, injecting...")
+                    logger.info(f"Got solution, injecting...")
                     # Inject the solution
                     await page.evaluate(f"""
                         var response = '{solution}';
@@ -202,14 +207,14 @@ class ArchiveRenderer:
                     # Find and click submit button
                     submit_btn = await page.query_selector('input[type="submit"], button[type="submit"], button')
                     if submit_btn:
-                        print("Clicking submit button...")
+                        logger.info("Clicking submit button...")
                         await submit_btn.click()
                         await page.wait_for_load_state("domcontentloaded", timeout=60000)
                         await page.screenshot(path="/data/after_captcha_submit.png")
-                        print("Screenshot after submit saved to /data/after_captcha_submit.png")
+                        logger.info("Screenshot after submit saved to /data/after_captcha_submit.png")
                     return True
                 else:
-                    print("Failed to solve reCAPTCHA - no solution returned")
+                    logger.info("Failed to solve reCAPTCHA - no solution returned")
                     return False
             
             # Check for hCaptcha
@@ -217,7 +222,7 @@ class ArchiveRenderer:
             if hcaptcha_element:
                 site_key = await hcaptcha_element.get_attribute("data-sitekey") or await hcaptcha_element.get_attribute("data-hcaptcha-sitekey")
                 if site_key:
-                    print(f"Found hCaptcha with sitekey: {site_key}")
+                    logger.info(f"Found hCaptcha with sitekey: {site_key}")
                     
                     solution = await self._solve_captcha(page, site_key, 'hcaptcha')
                     if solution:
@@ -234,18 +239,18 @@ class ArchiveRenderer:
                             await page.wait_for_load_state("domcontentloaded", timeout=60000)
                         return True
                     else:
-                        print("Failed to solve hCaptcha")
+                        logger.info("Failed to solve hCaptcha")
                         return False
             
             # Check if we're on a CAPTCHA page but couldn't find elements
             if has_one_more_step or has_recaptcha_script:
-                print("WARNING: Appears to be CAPTCHA page but couldn't find sitekey element")
+                logger.info("WARNING: Appears to be CAPTCHA page but couldn't find sitekey element")
                 # Print all elements with data-sitekey for debugging
                 all_sitekeys = await page.query_selector_all("[data-sitekey]")
-                print(f"Found {len(all_sitekeys)} elements with data-sitekey attribute")
+                logger.info(f"Found {len(all_sitekeys)} elements with data-sitekey attribute")
                 
                 # Try waiting a bit for reCAPTCHA to fully load
-                print("Waiting 3 seconds for reCAPTCHA to load...")
+                logger.info("Waiting 3 seconds for reCAPTCHA to load...")
                 await asyncio.sleep(3)
                 await page.screenshot(path="/data/captcha_after_wait.png")
                 
@@ -254,7 +259,7 @@ class ArchiveRenderer:
                 sitekey_match = re.search(r'data-sitekey=["\']([^"\']+)["\']', content)
                 if sitekey_match:
                     site_key = sitekey_match.group(1)
-                    print(f"Found sitekey after wait: {site_key}")
+                    logger.info(f"Found sitekey after wait: {site_key}")
                     
                     solution = await self._solve_captcha(page, site_key, 'recaptcha')
                     if solution:
@@ -274,11 +279,11 @@ class ArchiveRenderer:
                 
                 return False
             
-            print("No CAPTCHA found on page")
+            logger.info("No CAPTCHA found on page")
             return True
             
         except Exception as e:
-            print(f"CAPTCHA check error: {e}")
+            logger.info(f"CAPTCHA check error: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -310,16 +315,16 @@ class ArchiveRenderer:
             
             try:
                 # Navigate to archive.today (60s timeout - site can be slow)
-                print(f"Navigating to {self.ARCHIVE_URL}...")
+                logger.info(f"Navigating to {self.ARCHIVE_URL}...")
                 await page.goto(self.ARCHIVE_URL, wait_until="domcontentloaded", timeout=60000)
-                print(f"Page loaded. URL: {page.url}")
+                logger.info(f"Page loaded. URL: {page.url}")
                 
                 # Save initial screenshot
                 await page.screenshot(path="/data/render_initial.png")
-                print("Initial screenshot saved to /data/render_initial.png")
+                logger.info("Initial screenshot saved to /data/render_initial.png")
                 
                 # Check for CAPTCHA on initial page load
-                print("Checking for initial CAPTCHA...")
+                logger.info("Checking for initial CAPTCHA...")
                 captcha_solved = await self._check_and_solve_captcha(page)
                 if not captcha_solved:
                     await page.screenshot(path="/data/render_captcha_failed.png")
@@ -337,23 +342,23 @@ class ArchiveRenderer:
                     )
                 
                 # Fill in the URL
-                print(f"Filling URL: {url}")
+                logger.info(f"Filling URL: {url}")
                 await page.fill('input[name="url"]', url)
                 
                 # Click submit
-                print("Clicking submit button...")
+                logger.info("Clicking submit button...")
                 await page.click('input[type="submit"]')
                 
                 # Wait for navigation (60s timeout)
-                print("Waiting for page load after submit...")
+                logger.info("Waiting for page load after submit...")
                 await page.wait_for_load_state("domcontentloaded", timeout=60000)
                 
                 # Save screenshot after form submission
                 await page.screenshot(path="/data/render_after_submit.png")
-                print(f"After submit screenshot saved. Current URL: {page.url}")
+                logger.info(f"After submit screenshot saved. Current URL: {page.url}")
                 
                 # Check for another CAPTCHA after submit
-                print("Checking for CAPTCHA after submit...")
+                logger.info("Checking for CAPTCHA after submit...")
                 captcha_solved = await self._check_and_solve_captcha(page)
                 if not captcha_solved:
                     await page.screenshot(path="/data/render_post_captcha_failed.png")
