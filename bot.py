@@ -176,7 +176,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
                 color=discord.Color.red()
             )
             if result.archive_url:
-                embed.add_field(name="Archive Manually", value=result.archive_url, inline=False)
+                embed.add_field(name="Check Manually", value=result.archive_url, inline=False)
             await message.reply(embed=embed, mention_author=False)
             
         else:
@@ -218,7 +218,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
                 color=discord.Color.red()
             )
             if result.archive_url:
-                embed.add_field(name="Archive Manually", value=result.archive_url, inline=False)
+                embed.add_field(name="Check Manually", value=result.archive_url, inline=False)
             await ctx.send(embed=embed)
             
         else:
