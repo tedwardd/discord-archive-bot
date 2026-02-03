@@ -6,7 +6,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 from urllib.parse import urlparse
 
-from database import init_db, add_paywall_site, remove_paywall_site, get_paywall_sites, is_paywall_site
+from database import init_db, add_watched_site, remove_watched_site, get_watched_sites, is_watched_site
 from archive_service import ArchiveService
 
 load_dotenv()
@@ -31,7 +31,7 @@ class ArchiveBot(commands.Bot):
     async def setup_hook(self):
         """Called when the bot is starting up."""
         await init_db()
-        await self.add_cog(PaywallCog(self))
+        await self.add_cog(SiteManagementCog(self))
         await self.add_cog(ArchiveCog(self))
         # Sync slash commands
         await self.tree.sync()
@@ -42,17 +42,17 @@ class ArchiveBot(commands.Bot):
         await super().close()
 
 
-class PaywallCog(commands.Cog, name="Paywall Management"):
-    """Commands for managing the paywall sites list."""
+class SiteManagementCog(commands.Cog, name="Site Management"):
+    """Commands for managing the watched sites list."""
     
     def __init__(self, bot: ArchiveBot):
         self.bot = bot
     
-    @commands.hybrid_command(name="addsite", description="Add a domain to the paywall sites list")
+    @commands.hybrid_command(name="addsite", description="Add a domain to the watched sites list")
     @app_commands.describe(domain="The domain to add (e.g., nytimes.com)")
     @commands.has_permissions(manage_messages=True)
     async def add_site(self, ctx: commands.Context, domain: str):
-        """Add a domain to the paywall sites list."""
+        """Add a domain to the watched sites list."""
         # Clean up the domain
         domain = domain.lower().strip()
         if domain.startswith("http"):
@@ -67,41 +67,41 @@ class PaywallCog(commands.Cog, name="Paywall Management"):
             await ctx.send("Please provide a valid domain.")
             return
         
-        added = await add_paywall_site(domain, str(ctx.author))
+        added = await add_watched_site(domain, str(ctx.author))
         if added:
-            await ctx.send(f"Added `{domain}` to the paywall sites list.")
+            await ctx.send(f"Added `{domain}` to the watched sites list.")
         else:
-            await ctx.send(f"`{domain}` is already in the paywall sites list.")
+            await ctx.send(f"`{domain}` is already in the watched sites list.")
     
-    @commands.hybrid_command(name="removesite", description="Remove a domain from the paywall sites list")
+    @commands.hybrid_command(name="removesite", description="Remove a domain from the watched sites list")
     @app_commands.describe(domain="The domain to remove")
     @commands.has_permissions(manage_messages=True)
     async def remove_site(self, ctx: commands.Context, domain: str):
-        """Remove a domain from the paywall sites list."""
+        """Remove a domain from the watched sites list."""
         domain = domain.lower().strip()
         if domain.startswith("www."):
             domain = domain[4:]
         
-        removed = await remove_paywall_site(domain)
+        removed = await remove_watched_site(domain)
         if removed:
-            await ctx.send(f"Removed `{domain}` from the paywall sites list.")
+            await ctx.send(f"Removed `{domain}` from the watched sites list.")
         else:
-            await ctx.send(f"`{domain}` was not in the paywall sites list.")
+            await ctx.send(f"`{domain}` was not in the watched sites list.")
     
-    @commands.hybrid_command(name="listsites", description="List all paywall sites being monitored")
+    @commands.hybrid_command(name="listsites", description="List all sites being monitored for archiving")
     async def list_sites(self, ctx: commands.Context):
-        """List all domains in the paywall sites list."""
-        sites = await get_paywall_sites()
+        """List all domains in the watched sites list."""
+        sites = await get_watched_sites()
         
         if not sites:
-            await ctx.send("No paywall sites are currently being monitored.")
+            await ctx.send("No sites are currently being monitored.")
             return
         
         # Format the list nicely
         site_list = "\n".join(f"• `{site}`" for site in sites)
         
         embed = discord.Embed(
-            title="Monitored Paywall Sites",
+            title="Monitored Sites",
             description=site_list,
             color=discord.Color.blue()
         )
@@ -116,7 +116,7 @@ class PaywallCog(commands.Cog, name="Paywall Management"):
         
         embed = discord.Embed(
             title="Archive Bot Help",
-            description="Automatically detects paywall URLs and provides archived versions.",
+            description="Automatically detects URLs from watched sites and provides archived versions.",
             color=discord.Color.blue()
         )
         
@@ -127,17 +127,17 @@ class PaywallCog(commands.Cog, name="Paywall Management"):
         )
         embed.add_field(
             name=f"{prefix}listsites",
-            value="List all monitored paywall sites",
+            value="List all monitored sites",
             inline=False
         )
         embed.add_field(
             name=f"{prefix}addsite <domain>",
-            value="Add a paywall site (requires Manage Messages)",
+            value="Add a site to watch (requires Manage Messages)",
             inline=False
         )
         embed.add_field(
             name=f"{prefix}removesite <domain>",
-            value="Remove a paywall site (requires Manage Messages)",
+            value="Remove a watched site (requires Manage Messages)",
             inline=False
         )
         
@@ -154,7 +154,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
     
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        """Listen for messages containing URLs to paywall sites."""
+        """Listen for messages containing URLs from watched sites."""
         # Ignore bot messages
         if message.author.bot:
             return
@@ -165,8 +165,8 @@ class ArchiveCog(commands.Cog, name="Archive"):
         if not urls:
             return
         
-        paywall_sites = await get_paywall_sites()
-        if not paywall_sites:
+        watched_sites = await get_watched_sites()
+        if not watched_sites:
             return
         
         for url in urls:
@@ -178,25 +178,25 @@ class ArchiveCog(commands.Cog, name="Archive"):
                 if domain.startswith("www."):
                     domain = domain[4:]
                 
-                # Check if this domain matches any paywall site
-                is_paywall = any(
-                    paywall_domain in domain or domain in paywall_domain
-                    for paywall_domain in paywall_sites
+                # Check if this domain matches any watched site
+                is_watched = any(
+                    watched_domain in domain or domain in watched_domain
+                    for watched_domain in watched_sites
                 )
                 
-                if is_paywall:
-                    await self._handle_paywall_url(message, url)
+                if is_watched:
+                    await self._handle_watched_url(message, url)
                     
             except Exception as e:
                 print(f"Error processing URL {url}: {e}")
     
-    async def _handle_paywall_url(self, message: discord.Message, url: str):
-        """Handle a URL from a paywall site."""
+    async def _handle_watched_url(self, message: discord.Message, url: str):
+        """Handle a URL from a watched site."""
         async with message.channel.typing():
             result = await self.bot.archive_service.get_archive(url)
         
         embed = discord.Embed(
-            title="Paywall Detected",
+            title="Archived Version",
             color=discord.Color.blue()
         )
         
@@ -218,7 +218,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
         
         # archive.today fallback
         embed.add_field(
-            name="Still seeing a paywall?",
+            name="Alternative Archive",
             value=f"Try [archive.today]({result.archive_today_search}) or [create new archive]({result.archive_today_save})",
             inline=False
         )
@@ -258,7 +258,7 @@ class ArchiveCog(commands.Cog, name="Archive"):
         
         # archive.today fallback
         embed.add_field(
-            name="Still seeing a paywall?",
+            name="Alternative Archive",
             value=f"Try [archive.today]({result.archive_today_search}) or [create new archive]({result.archive_today_save})",
             inline=False
         )

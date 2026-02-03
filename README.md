@@ -1,14 +1,14 @@
 # Archive Bot
 
-A Discord bot that monitors messages for URLs from paywall sites and automatically provides archived versions via archive.is.
+A Discord bot that monitors messages for URLs from configured sites and automatically provides archived versions.
 
 ## Features
 
-- **Automatic URL Detection**: Monitors messages for links to configured paywall sites
-- **Archive Lookup**: Checks archive.is for existing archived versions
-- **Auto-Archive**: Submits pages for archiving if no archive exists
-- **Paywall Site Management**: Add/remove sites via Discord commands
-- **SQLite Database**: Persistent storage for paywall site list
+- **Automatic URL Detection**: Monitors messages for links to configured sites
+- **Wayback Machine Integration**: Checks for and creates Wayback Machine archives
+- **archive.today Links**: Provides archive.today links as an alternative
+- **Site Management**: Add/remove watched sites via Discord commands
+- **SQLite Database**: Persistent storage for watched sites list
 
 ## Setup
 
@@ -91,13 +91,13 @@ docker compose down
 
 All commands support both prefix (`!`) and slash (`/`) command formats.
 
-### Paywall Site Management
+### Site Management
 
 | Command | Description | Permission Required |
 |---------|-------------|---------------------|
-| `!addsite <domain>` | Add a domain to the paywall list | Manage Messages |
-| `!removesite <domain>` | Remove a domain from the paywall list | Manage Messages |
-| `!listsites` | List all monitored paywall sites | None |
+| `!addsite <domain>` | Add a domain to the watch list | Manage Messages |
+| `!removesite <domain>` | Remove a domain from the watch list | Manage Messages |
+| `!listsites` | List all monitored sites | None |
 
 ### Archive Commands
 
@@ -107,7 +107,7 @@ All commands support both prefix (`!`) and slash (`/`) command formats.
 
 ## Usage Examples
 
-### Adding Paywall Sites
+### Adding Sites to Watch
 
 ```
 !addsite nytimes.com
@@ -118,10 +118,11 @@ All commands support both prefix (`!`) and slash (`/`) command formats.
 ### How It Works
 
 1. A user posts a message containing a URL like `https://www.nytimes.com/2024/article-title`
-2. The bot detects the URL matches a configured paywall site
-3. The bot checks archive.today for an existing archive
+2. The bot detects the URL matches a configured watched site
+3. The bot checks the Wayback Machine for an existing archive
 4. If found, it replies with the archived link
-5. If not found, it provides a link for manual archiving (CAPTCHA required by archive.today)
+5. If not found, it submits the page to the Wayback Machine for archiving
+6. It also provides archive.today links as an alternative
 
 ## File Structure
 
@@ -136,9 +137,9 @@ archive_bot/
 └── archive_bot.db      # SQLite database (auto-created)
 ```
 
-## Common Paywall Sites
+## Common Sites to Watch
 
-Here are some common paywall sites you might want to add:
+Here are some common sites you might want to add:
 
 - `nytimes.com`
 - `wsj.com`
