@@ -105,7 +105,6 @@ All commands use Discord slash commands.
 |---------|-------------|
 | `/archive <url>` | Get archive.today links for any URL |
 | `/render <url>` | Create an archived version of a URL |
-| `/archivehelp` | Show all available commands |
 
 ## Usage Examples
 
