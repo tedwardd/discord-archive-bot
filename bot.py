@@ -156,6 +156,18 @@ class ArchiveBot(discord.Client):
                     color=discord.Color.green()
                 )
                 embed.add_field(name="Archive URL", value=result.archive_url, inline=False)
+            elif not result.success and "Timeout" in str(result.error):
+                links = self.archive_service.get_links(url)
+                embed = discord.Embed(
+                    title="Archive Render Timeout",
+                    description="Timed out waiting for archive to render",
+                    color=discord.Color.orange()
+                )
+                embed.add_field(
+                    name="Check Archive Progress",
+                    value=f"[Check archive progress manually]({links.save_url})",
+                    inline=False
+                )
             else:
                 links = self.archive_service.get_links(url)
                 embed = discord.Embed(
